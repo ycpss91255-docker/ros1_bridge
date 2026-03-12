@@ -1,0 +1,23 @@
+services:
+  # ── Runtime ────────────────────────────────────────────────
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: ${DOCKER_HUB_USER:-local}/ros1_bridge:latest
+    container_name: ros1_bridge
+    network_mode: host
+    ipc: host
+    stdin_open: true
+    tty: true
+
+  # ── Smoke test (ephemeral) ─────────────────────────────────
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    image: ${DOCKER_HUB_USER:-local}/ros1_bridge:test
+    profiles:
+      - test

@@ -1,0 +1,20 @@
+topics:
+  - topic: /camera/camera/aligned_depth_to_color/camera_info
+    type: sensor_msgs/msg/CameraInfo
+    queue_size: 10
+  - topic: /camera/camera/aligned_depth_to_color/image_raw
+    type: sensor_msgs/msg/Image
+    queue_size: 10
+  - topic: /camera/camera/color/camera_info
+    type: sensor_msgs/msg/CameraInfo
+    queue_size: 10
+  - topic: /camera/camera/color/image_raw
+    type: sensor_msgs/msg/Image
+    queue_size: 10
+  - topic: /camera/camera/depth/camera_info
+    type: sensor_msgs/msg/CameraInfo
+    queue_size: 10
+  - topic: /camera/camera/depth/image_rect_raw
+    type: sensor_msgs/msg/Image
+    queue_size: 10
+

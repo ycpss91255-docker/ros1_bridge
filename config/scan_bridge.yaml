@@ -1,0 +1,5 @@
+topics:
+  - topic: /scan
+    type: sensor_msgs/msg/LaserScan
+    queue_size: 10
+
