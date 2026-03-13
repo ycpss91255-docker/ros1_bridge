@@ -2,7 +2,11 @@
 
 set -euo pipefail
 
-CONTAINER="ros1_bridge"
-CMD="${1:-bash}"
+FILE_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 
-docker exec -it "${CONTAINER}" "${CMD}"
+TARGET="${1:-runtime}"
+shift 2>/dev/null || true
+CMD="${*:-bash}"
+
+docker compose -f "${FILE_PATH}/compose.yaml" \
+    exec "${TARGET}" ${CMD}
