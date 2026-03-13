@@ -10,6 +10,19 @@ TARGET="runtime"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -h|--help)
+            cat <<'EOF'
+Usage: ./run.sh [-h] [-d|--detach] [TARGET]
+
+Options:
+  -h, --help     Show this help
+  -d, --detach   Run in background (docker compose up -d)
+
+Targets:
+  runtime  Runtime container (default)
+EOF
+            exit 0
+            ;;
         -d|--detach)
             DETACH=true
             shift
