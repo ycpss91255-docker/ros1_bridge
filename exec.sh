@@ -25,4 +25,5 @@ shift 2>/dev/null || true
 CMD="${*:-bash}"
 
 docker compose -f "${FILE_PATH}/compose.yaml" \
+    --env-file "${FILE_PATH}/.env" \
     exec "${TARGET}" ${CMD}
