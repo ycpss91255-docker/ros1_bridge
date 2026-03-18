@@ -8,10 +8,8 @@ FILE_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 DETACH=false
 TARGET="runtime"
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -h|--help)
-            cat <<'EOF'
+usage() {
+    cat >&2 <<'EOF'
 Usage: ./run.sh [-h] [-d|--detach] [TARGET]
 
 Options:
@@ -21,7 +19,13 @@ Options:
 Targets:
   runtime  Runtime container (default)
 EOF
-            exit 0
+    exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
             ;;
         -d|--detach)
             DETACH=true

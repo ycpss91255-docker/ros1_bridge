@@ -117,6 +117,42 @@ graph TD
     classDef ephemeral fill:#6e2c00,color:#fff,stroke:#e67e22,stroke-dasharray:5 5
 ```
 
+## Smoke Tests
+
+```bash
+./build.sh test
+```
+
+位於 `smoke_test/ros_env.bats`，共 **8** 項。
+
+<details>
+<summary>展開查看測試細項</summary>
+
+#### ROS 環境 (4)
+
+| 測試項目 | 說明 |
+|----------|------|
+| ROS 1 (noetic) | `setup.bash` 存在 |
+| ROS 2 (foxy) | `setup.bash` 存在 |
+| ROS 1 | 環境可 source |
+| ROS 2 | source ROS 1 後環境可 source |
+
+#### Bridge (2)
+
+| 測試項目 | 說明 |
+|----------|------|
+| `ros1_bridge` | package 可用 |
+| `bridge.yaml` | 設定檔存在 |
+
+#### 系統 (2)
+
+| 測試項目 | 說明 |
+|----------|------|
+| `entrypoint.sh` | 存在且可執行 |
+| `config/` | 目錄存在 |
+
+</details>
+
 ## 目錄結構
 
 ```text

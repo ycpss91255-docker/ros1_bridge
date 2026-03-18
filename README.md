@@ -117,6 +117,42 @@ graph TD
     classDef ephemeral fill:#6e2c00,color:#fff,stroke:#e67e22,stroke-dasharray:5 5
 ```
 
+## Smoke Tests
+
+```bash
+./build.sh test
+```
+
+Located in `smoke_test/ros_env.bats` — **8 tests** total.
+
+<details>
+<summary>Click to expand test details</summary>
+
+#### ROS environment (4)
+
+| Test | Description |
+|------|-------------|
+| ROS 1 (noetic) | `setup.bash` exists |
+| ROS 2 (foxy) | `setup.bash` exists |
+| ROS 1 | Environment can be sourced |
+| ROS 2 | Environment can be sourced after ROS 1 |
+
+#### Bridge (2)
+
+| Test | Description |
+|------|-------------|
+| `ros1_bridge` | Package available |
+| `bridge.yaml` | Config file exists |
+
+#### System (2)
+
+| Test | Description |
+|------|-------------|
+| `entrypoint.sh` | Exists and executable |
+| `config/` | Directory exists |
+
+</details>
+
 ## Directory Structure
 
 ```text
