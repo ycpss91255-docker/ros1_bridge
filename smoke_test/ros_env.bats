@@ -17,13 +17,13 @@ setup() {
 @test "ROS 1 environment can be sourced" {
     run bash -c "source /opt/ros/noetic/setup.bash && echo ok"
     assert_success
-    assert_output "ok"
+    assert_line "ok"
 }
 
 @test "ROS 2 environment can be sourced after ROS 1" {
     run bash -c "source /opt/ros/noetic/setup.bash && source /opt/ros/foxy/setup.bash && echo ok"
     assert_success
-    assert_output "ok"
+    assert_line "ok"
 }
 
 @test "ros1_bridge package is available" {
