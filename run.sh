@@ -39,6 +39,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "${DETACH}" == true ]]; then
+    docker compose -f "${FILE_PATH}/compose.yaml" down 2>/dev/null || true
     docker compose -f "${FILE_PATH}/compose.yaml" up -d "${TARGET}"
 else
     docker compose -f "${FILE_PATH}/compose.yaml" run --rm "${TARGET}" "$@"
