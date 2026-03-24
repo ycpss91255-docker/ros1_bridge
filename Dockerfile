@@ -55,6 +55,6 @@ RUN ln -sf /opt/bats/bin/bats /usr/local/bin/bats
 ENV BATS_LIB_PATH="/usr/lib/bats"
 
 # Smoke test
-COPY smoke_test/ /smoke_test/
+COPY test/smoke_test/ /smoke_test/
 
 RUN bats /smoke_test/
