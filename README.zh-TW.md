@@ -1,6 +1,6 @@
 # ROS 1 Bridge Docker Environment
 
-**[English](README.md)** | **[繁體中文](README.zh-TW.md)**
+**[English](README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
 > **TL;DR** — 基於 `osrf/ros:foxy-ros1-bridge` 的 ROS 1/2 bridge 容器。透過 `parameter_bridge` 橋接 ROS 1 (Noetic) 與 ROS 2 (Foxy) topics。
 >

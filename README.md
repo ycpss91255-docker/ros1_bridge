@@ -1,6 +1,6 @@
 # ROS 1 Bridge Docker Environment
 
-**[English](README.md)** | **[繁體中文](README.zh-TW.md)**
+**[English](README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
 > **TL;DR** — ROS 1/2 bridge container based on `osrf/ros:foxy-ros1-bridge`. Bridges ROS 1 (Noetic) and ROS 2 (Foxy) topics via `parameter_bridge`.
 >
