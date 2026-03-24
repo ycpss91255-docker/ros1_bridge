@@ -16,10 +16,10 @@ jobs:
           ARCHIVE_NAME="ros1_bridge-${VERSION}"
 
           mkdir -p "${ARCHIVE_NAME}"
-          cp -r Dockerfile compose.yaml entrypoint.sh \
-                build.sh run.sh exec.sh \
-                bridge.yaml .env.example config/ smoke_test/ \
-                README.md README.zh-TW.md "${ARCHIVE_NAME}/"
+          cp -r Dockerfile compose.yaml \
+                build.sh run.sh exec.sh stop.sh \
+                bridge.yaml .env.example script/ config/ smoke_test/ \
+                README.md doc/ "${ARCHIVE_NAME}/"
 
           tar czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}"
           zip -r  "${ARCHIVE_NAME}.zip"    "${ARCHIVE_NAME}"

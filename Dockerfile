@@ -25,7 +25,7 @@ FROM ${IMAGE} AS runtime
 
 ARG BRIDGE_FILE="bridge.yaml"
 
-COPY --chmod=0755 entrypoint.sh /entrypoint.sh
+COPY --chmod=0755 script/entrypoint.sh /entrypoint.sh
 COPY --chmod=0644 "${BRIDGE_FILE}" /bridge.yaml
 COPY --chmod=0644 config/ /config/
 
