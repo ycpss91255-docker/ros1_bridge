@@ -123,7 +123,7 @@ graph TD
 ./build.sh test
 ```
 
-`smoke_test/ros_env.bats` — **8 テスト**。
+`test/smoke_test/` — **20 テスト**。
 
 <details>
 <summary>クリックしてテスト詳細を表示</summary>
@@ -151,6 +151,23 @@ graph TD
 | `entrypoint.sh` | 存在し実行可能 |
 | `config/` | ディレクトリが存在する |
 
+#### スクリプト help (12)
+
+| テスト項目 | 説明 |
+|-----------|------|
+| `build.sh -h` | 終了コード 0 |
+| `build.sh --help` | 終了コード 0 |
+| `build.sh -h` | usage を表示 |
+| `run.sh -h` | 終了コード 0 |
+| `run.sh --help` | 終了コード 0 |
+| `run.sh -h` | usage を表示 |
+| `exec.sh -h` | 終了コード 0 |
+| `exec.sh --help` | 終了コード 0 |
+| `exec.sh -h` | usage を表示 |
+| `stop.sh -h` | 終了コード 0 |
+| `stop.sh --help` | 終了コード 0 |
+| `stop.sh -h` | usage を表示 |
+
 </details>
 
 ## ディレクトリ構成
@@ -162,16 +179,23 @@ ros1_bridge/
 ├── build.sh                     # ビルドスクリプト
 ├── run.sh                       # 実行スクリプト
 ├── exec.sh                      # 起動中のコンテナに接続
-├── entrypoint.sh                # ROS 1 + ROS 2 を source、bridge 設定を読み込み
+├── stop.sh                      # コンテナを停止
+├── script/
+│   └── entrypoint.sh            # ROS 1 + ROS 2 を source、bridge 設定を読み込み
 ├── bridge.yaml                  # デフォルト bridge 設定
 ├── config/                      # 追加 bridge 設定
 │   ├── scan_bridge.yaml         # LaserScan bridge
 │   └── release_bridge.yaml      # Camera + depth bridge
+├── doc/                         # 翻訳版 README
+│   ├── README.zh-TW.md          # 繁体字中国語
+│   ├── README.zh-CN.md          # 簡体字中国語
+│   └── README.ja.md             # 日本語
 ├── .github/workflows/           # CI/CD
 │   ├── main.yaml
 │   ├── build-worker.yaml
 │   └── release-worker.yaml
-└── smoke_test/                  # Bats 環境テスト
+└── test/smoke_test/             # Bats 環境テスト
     ├── ros_env.bats
+    ├── script_help.bats
     └── test_helper.bash
 ```
