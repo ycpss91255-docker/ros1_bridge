@@ -123,7 +123,7 @@ graph TD
 ./build.sh test
 ```
 
-Located in `smoke_test/ros_env.bats` — **8 tests** total.
+Located in `test/smoke_test/` — **20 tests** total.
 
 <details>
 <summary>Click to expand test details</summary>
@@ -151,6 +151,23 @@ Located in `smoke_test/ros_env.bats` — **8 tests** total.
 | `entrypoint.sh` | Exists and executable |
 | `config/` | Directory exists |
 
+#### Script help (12)
+
+| Test | Description |
+|------|-------------|
+| `build.sh -h` | Exits 0 |
+| `build.sh --help` | Exits 0 |
+| `build.sh -h` | Prints usage |
+| `run.sh -h` | Exits 0 |
+| `run.sh --help` | Exits 0 |
+| `run.sh -h` | Prints usage |
+| `exec.sh -h` | Exits 0 |
+| `exec.sh --help` | Exits 0 |
+| `exec.sh -h` | Prints usage |
+| `stop.sh -h` | Exits 0 |
+| `stop.sh --help` | Exits 0 |
+| `stop.sh -h` | Prints usage |
+
 </details>
 
 ## Directory Structure
@@ -162,16 +179,23 @@ ros1_bridge/
 ├── build.sh                     # Build script
 ├── run.sh                       # Run script
 ├── exec.sh                      # Enter running container
-├── entrypoint.sh                # Sources ROS 1 + ROS 2, loads bridge config
+├── stop.sh                      # Stop running container
+├── script/
+│   └── entrypoint.sh            # Sources ROS 1 + ROS 2, loads bridge config
 ├── bridge.yaml                  # Default bridge configuration
 ├── config/                      # Additional bridge configs
 │   ├── scan_bridge.yaml         # LaserScan bridge
 │   └── release_bridge.yaml      # Camera + depth bridge
+├── doc/                         # Translated READMEs
+│   ├── README.zh-TW.md          # Traditional Chinese
+│   ├── README.zh-CN.md          # Simplified Chinese
+│   └── README.ja.md             # Japanese
 ├── .github/workflows/           # CI/CD
 │   ├── main.yaml
 │   ├── build-worker.yaml
 │   └── release-worker.yaml
-└── smoke_test/                  # Bats environment tests
+└── test/smoke_test/             # Bats environment tests
     ├── ros_env.bats
+    ├── script_help.bats
     └── test_helper.bash
 ```
