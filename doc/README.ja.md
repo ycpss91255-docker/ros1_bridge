@@ -107,7 +107,7 @@ graph TD
 
     EXT3 --> runtime["runtime\nentrypoint + bridge config"]:::stage
 
-    bats-src --> test["test  ⚡ ephemeral\nsmoke_test/ ビルド後に破棄"]:::ephemeral
+    bats-src --> test["test一時的\nsmoke_test/ ビルド後に破棄"]:::ephemeral
     bats-ext --> test
     runtime --> test
 
