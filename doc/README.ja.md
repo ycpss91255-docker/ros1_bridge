@@ -119,56 +119,7 @@ graph TD
 
 ## Smoke Tests
 
-```bash
-./build.sh test
-```
-
-`test/smoke/` — **20 テスト**。
-
-<details>
-<summary>クリックしてテスト詳細を表示</summary>
-
-#### ROS 環境 (4)
-
-| テスト項目 | 説明 |
-|-----------|------|
-| ROS 1 (noetic) | `setup.bash` が存在する |
-| ROS 2 (foxy) | `setup.bash` が存在する |
-| ROS 1 | 環境を source 可能 |
-| ROS 2 | ROS 1 の後に source 可能 |
-
-#### Bridge (2)
-
-| テスト項目 | 説明 |
-|-----------|------|
-| `ros1_bridge` | パッケージが利用可能 |
-| `bridge.yaml` | 設定ファイルが存在する |
-
-#### システム (2)
-
-| テスト項目 | 説明 |
-|-----------|------|
-| `entrypoint.sh` | 存在し実行可能 |
-| `config/` | ディレクトリが存在する |
-
-#### スクリプト help (12)
-
-| テスト項目 | 説明 |
-|-----------|------|
-| `build.sh -h` | 終了コード 0 |
-| `build.sh --help` | 終了コード 0 |
-| `build.sh -h` | usage を表示 |
-| `run.sh -h` | 終了コード 0 |
-| `run.sh --help` | 終了コード 0 |
-| `run.sh -h` | usage を表示 |
-| `exec.sh -h` | 終了コード 0 |
-| `exec.sh --help` | 終了コード 0 |
-| `exec.sh -h` | usage を表示 |
-| `stop.sh -h` | 終了コード 0 |
-| `stop.sh --help` | 終了コード 0 |
-| `stop.sh -h` | usage を表示 |
-
-</details>
+詳細は [TEST.md](test/TEST.md) を参照。
 
 ## ディレクトリ構成
 

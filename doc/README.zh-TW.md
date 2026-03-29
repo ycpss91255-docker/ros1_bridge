@@ -119,56 +119,7 @@ graph TD
 
 ## Smoke Tests
 
-```bash
-./build.sh test
-```
-
-位於 `test/smoke/`，共 **20** 項。
-
-<details>
-<summary>展開查看測試細項</summary>
-
-#### ROS 環境 (4)
-
-| 測試項目 | 說明 |
-|----------|------|
-| ROS 1 (noetic) | `setup.bash` 存在 |
-| ROS 2 (foxy) | `setup.bash` 存在 |
-| ROS 1 | 環境可 source |
-| ROS 2 | source ROS 1 後環境可 source |
-
-#### Bridge (2)
-
-| 測試項目 | 說明 |
-|----------|------|
-| `ros1_bridge` | package 可用 |
-| `bridge.yaml` | 設定檔存在 |
-
-#### 系統 (2)
-
-| 測試項目 | 說明 |
-|----------|------|
-| `entrypoint.sh` | 存在且可執行 |
-| `config/` | 目錄存在 |
-
-#### 腳本 help (12)
-
-| 測試項目 | 說明 |
-|----------|------|
-| `build.sh -h` | 結束碼 0 |
-| `build.sh --help` | 結束碼 0 |
-| `build.sh -h` | 顯示 usage |
-| `run.sh -h` | 結束碼 0 |
-| `run.sh --help` | 結束碼 0 |
-| `run.sh -h` | 顯示 usage |
-| `exec.sh -h` | 結束碼 0 |
-| `exec.sh --help` | 結束碼 0 |
-| `exec.sh -h` | 顯示 usage |
-| `stop.sh -h` | 結束碼 0 |
-| `stop.sh --help` | 結束碼 0 |
-| `stop.sh -h` | 顯示 usage |
-
-</details>
+詳見 [TEST.md](test/TEST.md)。
 
 ## 目錄結構
 
