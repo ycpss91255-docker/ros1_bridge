@@ -119,56 +119,7 @@ graph TD
 
 ## Smoke Tests
 
-```bash
-./build.sh test
-```
-
-Located in `test/smoke/` — **20 tests** total.
-
-<details>
-<summary>Click to expand test details</summary>
-
-#### ROS environment (4)
-
-| Test | Description |
-|------|-------------|
-| ROS 1 (noetic) | `setup.bash` exists |
-| ROS 2 (foxy) | `setup.bash` exists |
-| ROS 1 | Environment can be sourced |
-| ROS 2 | Environment can be sourced after ROS 1 |
-
-#### Bridge (2)
-
-| Test | Description |
-|------|-------------|
-| `ros1_bridge` | Package available |
-| `bridge.yaml` | Config file exists |
-
-#### System (2)
-
-| Test | Description |
-|------|-------------|
-| `entrypoint.sh` | Exists and executable |
-| `config/` | Directory exists |
-
-#### Script help (12)
-
-| Test | Description |
-|------|-------------|
-| `build.sh -h` | Exits 0 |
-| `build.sh --help` | Exits 0 |
-| `build.sh -h` | Prints usage |
-| `run.sh -h` | Exits 0 |
-| `run.sh --help` | Exits 0 |
-| `run.sh -h` | Prints usage |
-| `exec.sh -h` | Exits 0 |
-| `exec.sh --help` | Exits 0 |
-| `exec.sh -h` | Prints usage |
-| `stop.sh -h` | Exits 0 |
-| `stop.sh --help` | Exits 0 |
-| `stop.sh -h` | Prints usage |
-
-</details>
+See [TEST.md](doc/test/TEST.md) for details.
 
 ## Directory Structure
 
