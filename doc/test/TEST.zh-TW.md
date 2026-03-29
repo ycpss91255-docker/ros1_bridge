@@ -2,7 +2,7 @@
 
 **20 個測試**。
 
-## test/smoke_test/ros_env.bats
+## test/smoke/ros_env.bats
 
 ### ROS environment (4)
 
@@ -27,7 +27,7 @@
 | `entrypoint.sh exists and is executable` | `/entrypoint.sh` is executable |
 | `config directory exists` | `/config` directory exists |
 
-## test/smoke_test/script_help.bats
+## test/smoke/script_help.bats
 
 ### build.sh (3)
 

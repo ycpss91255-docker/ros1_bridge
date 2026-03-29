@@ -8,7 +8,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [v1.4.1] - 2026-03-25
 
 ### Changed
-- move smoke_test/ to test/smoke_test/
+- move smoke/ to test/smoke/
 - move READMEs to doc/, entrypoint.sh to script/
 
 ### Fixed
