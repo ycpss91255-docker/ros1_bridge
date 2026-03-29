@@ -47,10 +47,10 @@
 ### Build
 
 ```bash
-./build.sh                       # Build runtime (default)
+./build.sh                       # Build devel (default)
 ./build.sh test                  # Build with smoke tests
 
-docker compose build runtime     # Equivalent
+docker compose build devel     # Equivalent
 ```
 
 ### Run
@@ -59,7 +59,7 @@ docker compose build runtime     # Equivalent
 ./run.sh                         # Run with default bridge config
 
 # Or with custom bridge mode
-docker compose run --rm runtime ros2 run ros1_bridge dynamic_bridge
+docker compose run --rm devel ros2 run ros1_bridge dynamic_bridge
 ```
 
 ### Enter running container
@@ -82,7 +82,7 @@ The default bridge config is `bridge.yaml`. Additional configs are in `config/`:
 To use a different config, rebuild with:
 
 ```bash
-docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml runtime
+docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
 ```
 
 ### YAML Format
@@ -105,11 +105,11 @@ graph TD
     EXT1 --> bats-src["bats-src"]:::tool
     EXT2 --> bats-ext["bats-extensions"]:::tool
 
-    EXT3 --> runtime["runtime\nentrypoint + bridge config"]:::stage
+    EXT3 --> devel["devel\nentrypoint + bridge config"]:::stage
 
     bats-src --> test["test (ephemeral)\nsmoke tests, discarded after build"]:::ephemeral
     bats-ext --> test
-    runtime --> test
+    devel --> test
 
     classDef external fill:#555,color:#fff,stroke:#999
     classDef tool fill:#8B6914,color:#fff,stroke:#c8960c
@@ -123,7 +123,7 @@ graph TD
 ./build.sh test
 ```
 
-Located in `test/smoke_test/` — **20 tests** total.
+Located in `test/smoke/` — **20 tests** total.
 
 <details>
 <summary>Click to expand test details</summary>
@@ -175,11 +175,14 @@ Located in `test/smoke_test/` — **20 tests** total.
 ```text
 ros1_bridge/
 ├── compose.yaml                 # Docker Compose definition
-├── Dockerfile                   # Multi-stage build (runtime + test)
-├── build.sh                     # Build script
-├── run.sh                       # Run script
-├── exec.sh                      # Enter running container
-├── stop.sh                      # Stop running container
+├── Dockerfile                   # Multi-stage build (devel + test)
+├── build.sh -> template/build.sh    # Symlink
+├── run.sh -> template/run.sh        # Symlink
+├── exec.sh -> template/exec.sh      # Symlink
+├── stop.sh -> template/stop.sh      # Symlink
+├── Makefile -> template/Makefile    # Symlink
+├── .template_version            # Template subtree version (v0.4.1)
+├── template/                    # Shared scripts, tests, CI (git subtree)
 ├── script/
 │   └── entrypoint.sh            # Sources ROS 1 + ROS 2, loads bridge config
 ├── bridge.yaml                  # Default bridge configuration
@@ -190,12 +193,8 @@ ros1_bridge/
 │   ├── README.zh-TW.md          # Traditional Chinese
 │   ├── README.zh-CN.md          # Simplified Chinese
 │   └── README.ja.md             # Japanese
-├── .github/workflows/           # CI/CD
-│   ├── main.yaml
-│   ├── build-worker.yaml
-│   └── release-worker.yaml
-└── test/smoke_test/             # Bats environment tests
-    ├── ros_env.bats
-    ├── script_help.bats
-    └── test_helper.bash
+├── .github/workflows/
+│   └── main.yaml                # CI/CD (calls template reusable workflows)
+└── test/smoke/                  # Bats environment tests (repo-specific)
+    └── ros_env.bats
 ```

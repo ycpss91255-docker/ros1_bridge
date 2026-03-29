@@ -47,10 +47,10 @@
 ### 构建
 
 ```bash
-./build.sh                       # 构建 runtime（默认）
+./build.sh                       # 构建 devel（默认）
 ./build.sh test                  # 构建含 smoke test
 
-docker compose build runtime     # 等效命令
+docker compose build devel     # 等效命令
 ```
 
 ### 执行
@@ -59,7 +59,7 @@ docker compose build runtime     # 等效命令
 ./run.sh                         # 以默认 bridge 设置执行
 
 # 或使用自定义 bridge 模式
-docker compose run --rm runtime ros2 run ros1_bridge dynamic_bridge
+docker compose run --rm devel ros2 run ros1_bridge dynamic_bridge
 ```
 
 ### 进入已启动的容器
@@ -82,7 +82,7 @@ docker compose run --rm runtime ros2 run ros1_bridge dynamic_bridge
 使用不同设置重新构建：
 
 ```bash
-docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml runtime
+docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
 ```
 
 ### YAML 格式
@@ -105,11 +105,11 @@ graph TD
     EXT1 --> bats-src["bats-src"]:::tool
     EXT2 --> bats-ext["bats-extensions"]:::tool
 
-    EXT3 --> runtime["runtime\nentrypoint + bridge config"]:::stage
+    EXT3 --> devel["devel\nentrypoint + bridge config"]:::stage
 
-    bats-src --> test["test临时性\nsmoke_test/ 执行后即丢"]:::ephemeral
+    bats-src --> test["test临时性\nsmoke/ 执行后即丢"]:::ephemeral
     bats-ext --> test
-    runtime --> test
+    devel --> test
 
     classDef external fill:#555,color:#fff,stroke:#999
     classDef tool fill:#8B6914,color:#fff,stroke:#c8960c
@@ -123,7 +123,7 @@ graph TD
 ./build.sh test
 ```
 
-位于 `test/smoke_test/`，共 **20** 项。
+位于 `test/smoke/`，共 **20** 项。
 
 <details>
 <summary>展开查看测试详情</summary>
@@ -175,11 +175,14 @@ graph TD
 ```text
 ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定义
-├── Dockerfile                   # 多阶段构建（runtime + test）
-├── build.sh                     # 构建脚本
-├── run.sh                       # 执行脚本
-├── exec.sh                      # 进入已启动的容器
-├── stop.sh                      # 停止容器
+├── Dockerfile                   # 多阶段构建（devel + test）
+├── build.sh -> template/build.sh    # Symlink
+├── run.sh -> template/run.sh        # Symlink
+├── exec.sh -> template/exec.sh      # Symlink
+├── stop.sh -> template/stop.sh      # Symlink
+├── Makefile -> template/Makefile    # Symlink
+├── .template_version            # Template subtree 版本（v0.4.1）
+├── template/                    # 共用脚本、测试、CI（git subtree）
 ├── script/
 │   └── entrypoint.sh            # Source ROS 1 + ROS 2，载入 bridge 设置
 ├── bridge.yaml                  # 默认 bridge 设置
@@ -190,12 +193,8 @@ ros1_bridge/
 │   ├── README.zh-TW.md          # 繁体中文
 │   ├── README.zh-CN.md          # 简体中文
 │   └── README.ja.md             # 日文
-├── .github/workflows/           # CI/CD
-│   ├── main.yaml
-│   ├── build-worker.yaml
-│   └── release-worker.yaml
-└── test/smoke_test/             # Bats 环境测试
-    ├── ros_env.bats
-    ├── script_help.bats
-    └── test_helper.bash
+├── .github/workflows/
+│   └── main.yaml                # CI/CD（调用 template reusable workflows）
+└── test/smoke/                  # Bats 环境测试（repo 专属）
+    └── ros_env.bats
 ```

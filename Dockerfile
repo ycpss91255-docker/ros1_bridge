@@ -20,8 +20,8 @@ RUN apk add --no-cache curl xz && \
         https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64 && \
     chmod +x /usr/local/bin/hadolint
 
-############################## runtime ##############################
-FROM ${IMAGE} AS runtime
+############################## devel ##############################
+FROM ${IMAGE} AS devel
 
 ARG BRIDGE_FILE="bridge.yaml"
 
@@ -33,7 +33,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 CMD ["ros2", "run", "ros1_bridge", "parameter_bridge"]
 
 ############################## test (ephemeral) ##############################
-FROM runtime AS test
+FROM devel AS test
 
 # Install lint tools
 COPY --from=lint-tools /usr/local/bin/shellcheck /usr/local/bin/shellcheck
@@ -42,7 +42,8 @@ COPY --from=lint-tools /usr/local/bin/hadolint /usr/local/bin/hadolint
 # Lint: ShellCheck (.sh) + Hadolint (Dockerfile)
 COPY .hadolint.yaml /lint/.hadolint.yaml
 COPY Dockerfile /lint/Dockerfile
-COPY *.sh /lint/
+COPY template/build.sh template/run.sh template/exec.sh template/stop.sh /lint/
+COPY script/entrypoint.sh /lint/
 RUN shellcheck -S warning /lint/*.sh
 RUN cd /lint && hadolint Dockerfile
 
@@ -55,6 +56,7 @@ RUN ln -sf /opt/bats/bin/bats /usr/local/bin/bats
 ENV BATS_LIB_PATH="/usr/lib/bats"
 
 # Smoke test
-COPY test/smoke_test/ /smoke_test/
+COPY template/test/smoke/test_helper.bash template/test/smoke/script_help.bats /smoke_test/
+COPY test/smoke/ /smoke_test/
 
 RUN bats /smoke_test/

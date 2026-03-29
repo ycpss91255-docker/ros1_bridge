@@ -1,11 +1,11 @@
 services:
-  # ── Runtime ────────────────────────────────────────────────
-  runtime:
+  # ── Devel ──────────────────────────────────────────────────
+  devel:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runtime
-    image: ${DOCKER_HUB_USER:-local}/ros1_bridge:latest
+      target: devel
+    image: ${DOCKER_HUB_USER:-local}/ros1_bridge:devel
     container_name: ros1_bridge
     network_mode: host
     ipc: host

@@ -47,10 +47,10 @@
 ### ビルド
 
 ```bash
-./build.sh                       # runtime をビルド（デフォルト）
+./build.sh                       # devel をビルド（デフォルト）
 ./build.sh test                  # smoke test 付きビルド
 
-docker compose build runtime     # 同等のコマンド
+docker compose build devel     # 同等のコマンド
 ```
 
 ### 実行
@@ -59,7 +59,7 @@ docker compose build runtime     # 同等のコマンド
 ./run.sh                         # デフォルトの bridge 設定で実行
 
 # カスタム bridge モードを使用
-docker compose run --rm runtime ros2 run ros1_bridge dynamic_bridge
+docker compose run --rm devel ros2 run ros1_bridge dynamic_bridge
 ```
 
 ### 起動中のコンテナに接続
@@ -82,7 +82,7 @@ docker compose run --rm runtime ros2 run ros1_bridge dynamic_bridge
 異なる設定で再ビルド：
 
 ```bash
-docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml runtime
+docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
 ```
 
 ### YAML フォーマット
@@ -105,11 +105,11 @@ graph TD
     EXT1 --> bats-src["bats-src"]:::tool
     EXT2 --> bats-ext["bats-extensions"]:::tool
 
-    EXT3 --> runtime["runtime\nentrypoint + bridge config"]:::stage
+    EXT3 --> devel["devel\nentrypoint + bridge config"]:::stage
 
-    bats-src --> test["test一時的\nsmoke_test/ ビルド後に破棄"]:::ephemeral
+    bats-src --> test["test一時的\nsmoke/ ビルド後に破棄"]:::ephemeral
     bats-ext --> test
-    runtime --> test
+    devel --> test
 
     classDef external fill:#555,color:#fff,stroke:#999
     classDef tool fill:#8B6914,color:#fff,stroke:#c8960c
@@ -123,7 +123,7 @@ graph TD
 ./build.sh test
 ```
 
-`test/smoke_test/` — **20 テスト**。
+`test/smoke/` — **20 テスト**。
 
 <details>
 <summary>クリックしてテスト詳細を表示</summary>
@@ -175,11 +175,14 @@ graph TD
 ```text
 ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定義
-├── Dockerfile                   # マルチステージビルド（runtime + test）
-├── build.sh                     # ビルドスクリプト
-├── run.sh                       # 実行スクリプト
-├── exec.sh                      # 起動中のコンテナに接続
-├── stop.sh                      # コンテナを停止
+├── Dockerfile                   # マルチステージビルド（devel + test）
+├── build.sh -> template/build.sh    # Symlink
+├── run.sh -> template/run.sh        # Symlink
+├── exec.sh -> template/exec.sh      # Symlink
+├── stop.sh -> template/stop.sh      # Symlink
+├── Makefile -> template/Makefile    # Symlink
+├── .template_version            # Template subtree バージョン（v0.4.1）
+├── template/                    # 共有スクリプト、テスト、CI（git subtree）
 ├── script/
 │   └── entrypoint.sh            # ROS 1 + ROS 2 を source、bridge 設定を読み込み
 ├── bridge.yaml                  # デフォルト bridge 設定
@@ -190,12 +193,8 @@ ros1_bridge/
 │   ├── README.zh-TW.md          # 繁体字中国語
 │   ├── README.zh-CN.md          # 簡体字中国語
 │   └── README.ja.md             # 日本語
-├── .github/workflows/           # CI/CD
-│   ├── main.yaml
-│   ├── build-worker.yaml
-│   └── release-worker.yaml
-└── test/smoke_test/             # Bats 環境テスト
-    ├── ros_env.bats
-    ├── script_help.bats
-    └── test_helper.bash
+├── .github/workflows/
+│   └── main.yaml                # CI/CD（template reusable workflows を呼び出し）
+└── test/smoke/                  # Bats 環境テスト（repo 固有）
+    └── ros_env.bats
 ```
