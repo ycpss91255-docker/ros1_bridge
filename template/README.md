@@ -30,9 +30,12 @@ Shared template for Docker container repos in the [ycpss91255-docker](https://gi
 ## TL;DR
 
 ```bash
-# New repo: add subtree + init
+# New repo from scratch: init + first commit + subtree + init.sh
+mkdir <repo_name> && cd <repo_name>
+git init
+git commit --allow-empty -m "chore: initial commit"
 git subtree add --prefix=template \
-    git@github.com:ycpss91255-docker/template.git main --squash
+    https://github.com/ycpss91255-docker/template.git main --squash
 ./template/init.sh
 
 # Upgrade to latest
@@ -107,14 +110,18 @@ flowchart LR
 
 | File | Description |
 |------|-------------|
-| `build.sh` | Build containers (calls `script/docker/setup.sh` for `.env` generation) |
-| `run.sh` | Run containers (X11/Wayland support) |
+| `build.sh` | Build containers (TTY-aware `--setup` launches `setup_tui.sh`, else runs `setup.sh`) |
+| `run.sh` | Run containers (X11/Wayland support; same `--setup` semantics as `build.sh`) |
 | `exec.sh` | Exec into running containers |
 | `stop.sh` | Stop and remove containers |
-| `script/docker/setup.sh` | Auto-detect system parameters and generate `.env` |
+| `setup_tui.sh` | Interactive setup.conf editor (dialog / whiptail front-end) |
+| `script/docker/setup.sh` | Auto-detect system parameters and generate `.env` + `compose.yaml` |
+| `script/docker/_tui_backend.sh` | dialog/whiptail wrapper functions used by `setup_tui.sh` |
+| `script/docker/_tui_conf.sh` | INI validators + read/write for `setup_tui.sh` and `setup.sh` writeback |
 | `script/docker/_lib.sh` | Shared helpers (`_load_env`, `_compose`, `_compose_project`, ...) |
 | `script/docker/i18n.sh` | Shared language detection (`_detect_lang`, `_LANG`) |
-| `config/` | Shell configs (bashrc, tmux, terminator, pip) + IMAGE_NAME rules |
+| `config/` | Container-internal shell configs (bashrc, tmux, terminator, pip) |
+| `setup.conf` | Single per-repo runtime configuration (image / build / deploy / gui / network / volumes) |
 | `test/smoke/` | Shared smoke tests + runtime assertion helpers (see below) |
 | `test/unit/` | Template self-tests (bats + kcov) |
 | `test/integration/` | Level-1 `init.sh` end-to-end tests |
@@ -179,18 +186,95 @@ diagnostics pointing at the missing artifact.
 - `doc/` and `README.md`
 - Repo-specific smoke tests
 
+## Per-repo runtime configuration
+
+Each downstream repo drives its runtime config — GPU reservation, GUI
+env/volumes, network mode, extra volume mounts — through a single
+`setup.conf` INI file. `setup.sh` reads it (plus system detection) and
+regenerates both `.env` and `compose.yaml`; users never hand-edit those
+two derived artifacts.
+
+### One conf, six sections
+
+```
+[image]    rules = prefix:docker_, suffix:_ws, @default:unknown
+[build]    apt_mirror_ubuntu, apt_mirror_debian            # Dockerfile build args
+[deploy]   gpu_mode (auto|force|off), gpu_count, gpu_capabilities
+[gui]      mode (auto|force|off)
+[network]  mode (host|bridge|none), ipc, privileged
+[volumes]  mount_1 (workspace, auto-populated on first run)
+           mount_2..mount_N (extra host mounts; devices via /dev path)
+```
+
+Template default lives at `template/setup.conf`; per-repo overrides go
+at `<repo>/setup.conf`. Section-level **replace** strategy: a section
+present in the per-repo file fully replaces the template's section;
+omitted sections fall back to template.
+
+On first `setup.sh` run (no per-repo setup.conf yet), the template file
+is copied to the repo and the detected workspace is written to
+`[volumes] mount_1`. Subsequent runs read `mount_1` as source of truth
+— clear it to opt out of mounting a workspace. Edit via:
+
+```bash
+./setup_tui.sh                      # interactive dialog/whiptail editor
+./setup_tui.sh volumes              # jump directly to one section
+./build.sh --setup            # launches setup_tui.sh under TTY; setup.sh otherwise
+./template/init.sh --gen-conf # plain copy of template/setup.conf to repo root
+```
+
+### When setup.sh runs
+
+`setup.sh` runs only when explicitly triggered — it is not re-run on
+every build or launch:
+
+- **`./template/init.sh`** runs it once after the skeleton lands
+- **`./build.sh --setup` / `./run.sh --setup`** (or `-s`) re-runs it on demand
+- **First-time bootstrap**: `./build.sh` / `./run.sh` auto-run setup.sh
+  the very first time (when `.env` is missing, e.g. after a fresh CI
+  clone) — no manual `--setup` needed
+
+### Drift detection
+
+`setup.sh` stores `SETUP_CONF_HASH`, `SETUP_GUI_DETECTED`, and
+`SETUP_TIMESTAMP` in `.env`. On every `./build.sh` / `./run.sh`,
+stored values are compared against the current setup.conf hash + system
+detection; a `[WARNING]` is printed (non-blocking) when any of the
+following changed since last setup:
+
+- `setup.conf` contents (conf hash)
+- GPU / GUI detection
+- `USER_UID` (user identity change)
+
+Re-run with `--setup` to regenerate `.env` + `compose.yaml`.
+
+### Derived artifacts (gitignored)
+
+- `.env` — runtime variable values + `SETUP_*` drift metadata
+- `compose.yaml` — full compose with baseline + conditional blocks
+
+Open `compose.yaml` anytime to inspect the repo's current effective
+configuration.
+
 ## Quick Start
 
 ### Adding to a new repo
 
 ```bash
-# 1. Add subtree
-git subtree add --prefix=template \
-    git@github.com:ycpss91255-docker/template.git main --squash
+# 1. Initialize empty repo (skip if you already have one with at least one commit)
+mkdir <repo_name> && cd <repo_name>
+git init
+git commit --allow-empty -m "chore: initial commit"
 
-# 2. Initialize symlinks (one command)
+# 2. Add subtree
+git subtree add --prefix=template \
+    https://github.com/ycpss91255-docker/template.git main --squash
+
+# 3. Initialize symlinks (one command; runs setup.sh under the hood)
 ./template/init.sh
 ```
+
+> `git subtree add` requires `HEAD` to exist. On a freshly `git init`-ed repo with no commits, it fails with `ambiguous argument 'HEAD'` and `working tree has modifications`. The empty commit creates `HEAD` so subtree can merge into it.
 
 ### Updating
 
@@ -286,7 +370,8 @@ template/
 ├── dockerfile/
 │   ├── Dockerfile.test-tools         # Pre-built lint/test tools image
 │   └── Dockerfile.example            # Dockerfile template for new repos (sys → base → devel → test → [runtime])
-├── config/                           # Shell/tool configs + IMAGE_NAME rules
+├── setup.conf                        # Single runtime config (per-repo override mirror: <repo>/setup.conf)
+├── config/                           # Container-internal shell/tool configs
 │   ├── image_name.conf               # Default IMAGE_NAME detection rules
 │   ├── pip/
 │   │   ├── setup.sh

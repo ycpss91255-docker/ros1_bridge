@@ -27,7 +27,7 @@ EOF
 
   # Stub scripts referenced by _create_symlinks — empty files are fine
   # because symlinks only need a valid target path, not a valid payload.
-  for _f in build.sh run.sh exec.sh stop.sh Makefile; do
+  for _f in build.sh run.sh exec.sh stop.sh setup_tui.sh Makefile; do
     : > "${TMP_REPO}/template/script/docker/${_f}"
   done
   : > "${TMP_REPO}/template/.hadolint.yaml"
@@ -117,37 +117,57 @@ REMOTE
 }
 
 # ════════════════════════════════════════════════════════════════════
-# _create_version_file
+# _detect_template_version: reads VERSION file
 # ════════════════════════════════════════════════════════════════════
 
-@test "_create_version_file: writes given version to .template_version" {
+@test "_detect_template_version: reads VERSION file when present (no network)" {
+  echo "v1.5.0" > "${TMP_REPO}/template/VERSION"
+  # Mock git to fail (simulate offline)
+  mock_cmd "git" 'exit 128'
   _source_init
-  _create_version_file "v1.2.3"
-  assert [ -f "${TMP_REPO}/.template_version" ]
-  run cat "${TMP_REPO}/.template_version"
-  assert_output "v1.2.3"
+  local result
+  result="$(_detect_template_version)"
+  assert_equal "${result}" "v1.5.0"
 }
 
-@test "_create_version_file: writes 'unknown' when no argument given" {
+@test "_detect_template_version: VERSION file takes priority over git ls-remote" {
+  echo "v1.5.0" > "${TMP_REPO}/template/VERSION"
+  mock_cmd "git" '
+    if [[ "$1" == "ls-remote" ]]; then
+      cat <<REMOTE
+abc123  refs/tags/v2.0.0
+REMOTE
+      exit 0
+    fi
+    exit 0'
   _source_init
-  _create_version_file ""
-  run cat "${TMP_REPO}/.template_version"
-  assert_output "unknown"
+  local result
+  result="$(_detect_template_version)"
+  assert_equal "${result}" "v1.5.0"
 }
 
-@test "_create_version_file: writes 'unknown' when called with zero arguments" {
-  _source_init
-  _create_version_file
-  run cat "${TMP_REPO}/.template_version"
-  assert_output "unknown"
+# ════════════════════════════════════════════════════════════════════
+# Legacy .template_version cleanup
+# ════════════════════════════════════════════════════════════════════
+
+@test "init.sh removes legacy .template_version when present" {
+  echo "v0.7.0" > "${TMP_REPO}/.template_version"
+  echo "v1.0.0" > "${TMP_REPO}/template/VERSION"
+  # Need a Dockerfile so init takes existing-repo path
+  touch "${TMP_REPO}/Dockerfile"
+  mock_cmd "git" 'exit 128'
+  run bash "${TMP_REPO}/template/init.sh"
+  assert_success
+  assert [ ! -f "${TMP_REPO}/.template_version" ]
 }
 
-@test "_create_version_file: overwrites existing .template_version" {
-  echo "v0.1.0" > "${TMP_REPO}/.template_version"
-  _source_init
-  _create_version_file "v2.0.0"
-  run cat "${TMP_REPO}/.template_version"
-  assert_output "v2.0.0"
+@test "init.sh succeeds when no legacy .template_version exists" {
+  echo "v1.0.0" > "${TMP_REPO}/template/VERSION"
+  touch "${TMP_REPO}/Dockerfile"
+  mock_cmd "git" 'exit 128'
+  run bash "${TMP_REPO}/template/init.sh"
+  assert_success
+  assert [ ! -f "${TMP_REPO}/.template_version" ]
 }
 
 # ════════════════════════════════════════════════════════════════════
@@ -185,25 +205,20 @@ REMOTE
   assert_success
 }
 
-@test "_create_new_repo: generates .env.example with IMAGE_NAME=<repo>" {
+@test "_create_new_repo: does NOT generate .env.example (image name via setup.conf)" {
   _source_init
   _create_new_repo "main"
-  run cat "${TMP_REPO}/.env.example"
-  assert_output --partial "IMAGE_NAME="
-  # TMP_REPO's basename is random; the entry should reference it.
-  local _expected
-  _expected="$(basename "${TMP_REPO}")"
-  assert_output "IMAGE_NAME=${_expected}"
+  [[ ! -f "${TMP_REPO}/.env.example" ]]
 }
 
 # ════════════════════════════════════════════════════════════════════
 # _create_symlinks
 # ════════════════════════════════════════════════════════════════════
 
-@test "_create_symlinks: produces all five docker-script symlinks" {
+@test "_create_symlinks: produces all six docker-script symlinks" {
   _source_init
   _create_symlinks
-  for _f in build.sh run.sh exec.sh stop.sh Makefile; do
+  for _f in build.sh run.sh exec.sh stop.sh setup_tui.sh Makefile; do
     assert [ -L "${TMP_REPO}/${_f}" ]
     run readlink "${TMP_REPO}/${_f}"
     assert_output "template/script/docker/${_f}"

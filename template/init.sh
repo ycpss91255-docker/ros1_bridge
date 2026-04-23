@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 # init.sh - Initialize a repo with template
 #
-# Run from the repo root after git subtree add:
+# Full setup from scratch (git subtree add needs HEAD, so an initial commit is
+# required before adding the subtree):
+#   mkdir <repo_name> && cd <repo_name>
+#   git init
+#   git commit --allow-empty -m "chore: initial commit"
+#   git subtree add --prefix=template \
+#       https://github.com/ycpss91255-docker/template.git main --squash
 #   ./template/init.sh
 #
+# (Substitute `git@github.com:...` for SSH if you have a key configured.)
+#
 # Auto-detects:
-#   - Has Dockerfile → existing repo: create symlinks + .template_version
+#   - Has Dockerfile → existing repo: create symlinks
 #   - No Dockerfile → new repo: generate full project structure
 
 # Only set strict mode when running directly; when sourced, respect caller's settings
@@ -39,6 +47,13 @@ _create_symlinks() {
   _symlink "${TEMPLATE_REL}/script/docker/run.sh" "run.sh"
   _symlink "${TEMPLATE_REL}/script/docker/exec.sh" "exec.sh"
   _symlink "${TEMPLATE_REL}/script/docker/stop.sh" "stop.sh"
+  _symlink "${TEMPLATE_REL}/script/docker/setup_tui.sh" "setup_tui.sh"
+  # Upgrade hygiene: drop the pre-rename `tui.sh` symlink if present
+  # so we don't leave a dangling pointer after the file was renamed.
+  if [[ -L tui.sh ]]; then
+    rm -f tui.sh
+    _log "  Removed stale tui.sh symlink (renamed to setup_tui.sh)"
+  fi
   _symlink "${TEMPLATE_REL}/script/docker/Makefile" "Makefile"
 
   if [[ ! -f .hadolint.yaml ]] \
@@ -48,20 +63,65 @@ _create_symlinks() {
   else
     _log "  Keeping custom .hadolint.yaml (differs from template)"
   fi
+
+  _populate_config
+}
+
+# _populate_config
+#
+# On first init (no <repo>/config/), copy `template/config/` out as a
+# real directory the user owns and can edit freely. Rationale:
+#   * a symlink would make edits spill into the subtree and fight
+#     `git subtree pull`;
+#   * a plain Dockerfile COPY from `template/config/` would deny the
+#     user any per-repo override path at all.
+# Copy gives the user a clean, repo-local editing surface; subsequent
+# template upgrades leave this directory untouched and `upgrade.sh`
+# prints a diff hint when the upstream baseline moves so the user can
+# reconcile manually.
+_populate_config() {
+  # User already has a real config/ — preserve (contains their edits).
+  if [[ -d config && ! -L config ]]; then
+    _log "  Keeping existing config/ directory"
+    return 0
+  fi
+  # Stale symlink from an earlier init.sh version — drop it before
+  # copying. Without rm, `cp -r` would dereference and write INTO the
+  # symlink's target (i.e. pollute the subtree).
+  if [[ -L config ]]; then
+    rm -f config
+  fi
+  if [[ ! -d "${TEMPLATE_REL}/config" ]]; then
+    _log "  Skipping config/ seed (${TEMPLATE_REL}/config not found)"
+    return 0
+  fi
+  cp -r "${TEMPLATE_REL}/config" config
+  _log "  Copied config/ from ${TEMPLATE_REL}/config (yours to edit)"
 }
 
 _detect_template_version() {
+  # Prefer VERSION file inside template (auto-synced by subtree pull)
+  local version_file="${TEMPLATE_DIR}/VERSION"
+  if [[ -f "${version_file}" ]]; then
+    tr -d '[:space:]' < "${version_file}"
+    return 0
+  fi
+  # Fallback: query remote tags (for fresh subtree add before VERSION existed).
+  # HTTPS by default so fresh clones / CI runners without an SSH key still
+  # work. Override via TEMPLATE_REMOTE env var (e.g. SSH for private forks).
+  local _remote="${TEMPLATE_REMOTE:-https://github.com/ycpss91255-docker/template.git}"
   git ls-remote --tags --sort=-v:refname \
-    git@github.com:ycpss91255-docker/template.git 2>/dev/null \
+    "${_remote}" 2>/dev/null \
     | grep -oP 'refs/tags/v\d+\.\d+\.\d+$' \
     | head -1 \
     | sed 's|refs/tags/||' || true
 }
 
-_create_version_file() {
-  local ver="${1:-unknown}"
-  echo "${ver}" > .template_version
-  _log "Created .template_version (${ver})"
+_cleanup_legacy_version_file() {
+  if [[ -f .template_version ]]; then
+    rm -f .template_version
+    _log "Removed legacy .template_version (version now in template/VERSION)"
+  fi
 }
 
 # ── New repo scaffolding ────────────────────────────────────────────────────
@@ -80,35 +140,8 @@ _create_new_repo() {
   cp "${TEMPLATE_DIR}/dockerfile/Dockerfile.example" Dockerfile
   _log "  Created Dockerfile (from template)"
 
-  # compose.yaml
-  cat > compose.yaml <<YAML
-services:
-  devel:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: devel
-      args:
-        APT_MIRROR_UBUNTU: \${APT_MIRROR_UBUNTU:-tw.archive.ubuntu.com}
-        APT_MIRROR_DEBIAN: \${APT_MIRROR_DEBIAN:-mirror.twds.com.tw}
-    image: \${DOCKER_HUB_USER:-local}/${name}:devel
-    container_name: ${name}\${INSTANCE_SUFFIX:-}
-    stdin_open: true
-    tty: true
-
-  test:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: test
-      args:
-        APT_MIRROR_UBUNTU: \${APT_MIRROR_UBUNTU:-tw.archive.ubuntu.com}
-        APT_MIRROR_DEBIAN: \${APT_MIRROR_DEBIAN:-mirror.twds.com.tw}
-    image: \${DOCKER_HUB_USER:-local}/${name}:test
-    profiles:
-      - test
-YAML
-  _log "  Created compose.yaml"
+  # compose.yaml is a derived artifact generated by setup.sh based on
+  # setup.conf; _call_setup at the end of this flow will emit it.
 
   # script/entrypoint.sh
   mkdir -p script
@@ -147,10 +180,6 @@ setup() {
 BATS
   _log "  Created test/smoke/${name}_env.bats"
 
-  # .env.example
-  echo "IMAGE_NAME=${name}" > .env.example
-  _log "  Created .env.example"
-
   # .github/workflows/main.yaml
   mkdir -p .github/workflows
   cat > .github/workflows/main.yaml <<YAML
@@ -179,9 +208,10 @@ jobs:
 YAML
   _log "  Created .github/workflows/main.yaml"
 
-  # .gitignore
+  # .gitignore (compose.yaml + .env are setup.sh-generated artifacts)
   cat > .gitignore <<'GIT'
 .env
+compose.yaml
 coverage/
 .Dockerfile.generated
 GIT
@@ -245,20 +275,38 @@ _init_existing_repo() {
   _create_symlinks
 }
 
-# ── Generate per-repo image_name.conf ───────────────────────────────────────
+# ── Generate per-repo setup.conf ────────────────────────────────────────────
+#
+# Copies template/setup.conf to repo root so the user can override any section.
+# Replace strategy: a section present in the per-repo file fully replaces the
+# template's corresponding section; omitted sections fall back to template.
 
-_gen_image_conf() {
-  local _src="${TEMPLATE_DIR}/config/image_name.conf"
-  local _dst="${REPO_ROOT}/image_name.conf"
+_gen_setup_conf() {
+  local _src="${TEMPLATE_DIR}/setup.conf"
+  local _dst="${REPO_ROOT}/setup.conf"
   if [[ ! -f "${_src}" ]]; then
-    _error "Template image_name.conf not found at ${_src}"
+    _error "Template setup.conf not found at ${_src}"
   fi
   if [[ -f "${_dst}" ]]; then
-    _error "image_name.conf already exists in repo root. Remove it first or edit directly."
+    _error "setup.conf already exists at ${_dst}. Remove it first or edit directly."
   fi
   cp "${_src}" "${_dst}"
   _log "Created ${_dst}"
-  _log "Edit it to customize IMAGE_NAME detection rules for this repo."
+  _log "Edit it to customize runtime settings for this repo."
+}
+
+# ── Trigger setup.sh to materialize .env + compose.yaml ─────────────────────
+
+_call_setup() {
+  local _setup="${TEMPLATE_DIR}/script/docker/setup.sh"
+  if [[ ! -f "${_setup}" ]]; then
+    _log "Skipping setup.sh (${_setup} not found)"
+    return 0
+  fi
+  _log "Running setup.sh to generate .env + compose.yaml"
+  if ! bash "${_setup}" --base-path "${REPO_ROOT}" >/dev/null; then
+    _log "WARNING: setup.sh exited non-zero; inspect manually and rerun ./build.sh --setup"
+  fi
 }
 
 _error() { printf "[init] ERROR: %s\n" "$*" >&2; exit 1; }
@@ -268,27 +316,31 @@ _error() { printf "[init] ERROR: %s\n" "$*" >&2; exit 1; }
 main() {
   if [[ "${1:-}" =~ ^(-h|--help)$ ]]; then
     cat >&2 <<'EOF'
-Usage: ./template/init.sh [--gen-image-conf]
+Usage: ./template/init.sh [--gen-conf]
 
 Initialize a repo with template. Auto-detects:
-  - Has Dockerfile → create symlinks + .template_version
-  - No Dockerfile  → generate full project structure
+  - Has Dockerfile → create symlinks, then run setup.sh
+  - No Dockerfile  → generate full project structure, then run setup.sh
+
+Version is tracked in template/VERSION (auto-synced by subtree pull).
 
 Options:
-  --gen-image-conf   Copy template's image_name.conf to repo root
-                     (for per-repo IMAGE_NAME detection rule override)
+  --gen-conf         Copy template/setup.conf to <repo>/setup.conf so the
+                     user can override any section (image / build / deploy /
+                     gui / network / volumes). Refuses to overwrite an
+                     existing per-repo setup.conf.
 
 Run from the repo root after:
   git subtree add --prefix=template \
-      git@github.com:ycpss91255-docker/template.git <version> --squash
+      https://github.com/ycpss91255-docker/template.git <version> --squash
 EOF
     return 0
   fi
 
   cd "${REPO_ROOT}"
 
-  if [[ "${1:-}" == "--gen-image-conf" ]]; then
-    _gen_image_conf
+  if [[ "${1:-}" == "--gen-conf" ]]; then
+    _gen_setup_conf
     return 0
   fi
 
@@ -302,7 +354,8 @@ EOF
     _create_symlinks
   fi
 
-  _create_version_file "${template_version}"
+  _cleanup_legacy_version_file
+  _call_setup
 
   _log ""
   _log "Done!"
