@@ -12,13 +12,18 @@
 # setup.conf + system detection. WS_PATH is detected once and written back
 # to <repo>/setup.conf [volumes] mount_1; subsequent runs read mount_1.
 #
-# Usage: setup.sh [--base-path <path>] [--lang zh|zh-CN|ja]
+# Usage: setup.sh [-h|--help] [--base-path <path>] [--lang en|zh-TW|zh-CN|ja]
 
 # ── i18n messages ──────────────────────────────────────────────
+# Resolve the symlink (<repo>/setup.sh → template/script/docker/setup.sh)
+# so sibling sources (i18n.sh / _tui_conf.sh) are located in the
+# template directory regardless of how the script was invoked.
+_SETUP_SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")"
+_SETUP_SCRIPT_DIR="$(cd -- "$(dirname -- "${_SETUP_SELF}")" && pwd -P)"
 # shellcheck disable=SC1091
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/i18n.sh"
+source "${_SETUP_SCRIPT_DIR}/i18n.sh"
 # shellcheck disable=SC1091
-source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/_tui_conf.sh"
+source "${_SETUP_SCRIPT_DIR}/_tui_conf.sh"
 
 _msg() {
   local _key="${1}"
@@ -54,6 +59,43 @@ _msg() {
 if [[ "${BASH_SOURCE[0]:-}" == "${0:-}" ]]; then
   set -euo pipefail
 fi
+
+# ════════════════════════════════════════════════════════════════════
+# usage
+#
+# Prints CLI help. Phase A: English-only text; case scaffolding is in
+# place so per-language translations can be added without restructuring.
+# ════════════════════════════════════════════════════════════════════
+usage() {
+  case "${_LANG}" in
+    *)
+      cat >&2 <<'EOF'
+Usage: ./setup.sh [-h|--help] [--base-path <path>] [--lang <en|zh-TW|zh-CN|ja>]
+
+Regenerate .env + compose.yaml from setup.conf + system detection.
+Normally invoked indirectly via `./build.sh --setup` or `./setup_tui.sh`
+Save; run directly for non-interactive / scripted / CI use.
+
+Options:
+  -h, --help            Show this help and exit.
+  --base-path PATH      Repo root to operate on. Defaults to the repo
+                        containing this script (template/../..).
+  --lang LANG           Set message language (en|zh-TW|zh-CN|ja).
+                        Defaults to $SETUP_LANG or auto-detected from
+                        $LANG.
+
+Outputs (both derived artifacts, gitignored):
+  <base-path>/.env          Exported variables + SETUP_* drift metadata
+  <base-path>/compose.yaml  Full compose with baseline + conditional
+                            blocks (GPU / GUI / extra volumes / etc.)
+
+Source of truth is setup.conf (template default + optional per-repo
+override via section-replace). Edit setup.conf, not the derived files.
+EOF
+      ;;
+  esac
+  exit 0
+}
 
 # ════════════════════════════════════════════════════════════════════
 # detect_user_info
@@ -225,8 +267,7 @@ _load_setup_conf() {
     return 0
   fi
 
-  local _self_dir
-  _self_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
+  local _self_dir="${_SETUP_SCRIPT_DIR}"
   local _template_conf="${_self_dir}/../../setup.conf"
   local _repo_conf="${_base}/setup.conf"
 
@@ -510,8 +551,7 @@ _resolve_gui() {
 _compute_conf_hash() {
   local _base="${1:?}"
   local -n _cch_out="${2:?}"
-  local _self_dir
-  _self_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd -P)"
+  local _self_dir="${_SETUP_SCRIPT_DIR}"
   local _template_conf="${_self_dir}/../../setup.conf"
   local _repo_conf="${_base}/setup.conf"
 
@@ -567,6 +607,7 @@ generate_compose_yaml() {
   local _cgroup_rule_str="${19:-}"
   local _user_build_args_str="${20:-}"
   local _target_arch="${21:-}"
+  local _build_network="${22:-}"
 
   # TARGETARCH line emitter: only when target_arch is set. Empty =
   # omit the line entirely so BuildKit auto-fills TARGETARCH from the
@@ -575,6 +616,15 @@ generate_compose_yaml() {
     [[ -z "${_target_arch}" ]] && return 0
     # shellcheck disable=SC2016  # literal ${} consumed by compose, not bash
     printf '        TARGETARCH: ${TARGET_ARCH}\n'
+  }
+
+  # build.network emitter: only when build_network is set. Empty =
+  # omit the line so Docker uses its default (bridge). Non-empty =
+  # force the build to use that network (typically "host" for
+  # environments where bridge NAT doesn't work).
+  _emit_build_network_line() {
+    [[ -z "${_build_network}" ]] && return 0
+    printf '      network: %s\n' "${_build_network}"
   }
 
   # Convert space-separated caps to YAML array form [a, b, c]
@@ -604,6 +654,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: devel
+YAML
+    _emit_build_network_line
+    cat <<YAML
       args:
         APT_MIRROR_UBUNTU: \${APT_MIRROR_UBUNTU:-archive.ubuntu.com}
         APT_MIRROR_DEBIAN: \${APT_MIRROR_DEBIAN:-deb.debian.org}
@@ -765,6 +818,9 @@ YAML
       context: .
       dockerfile: Dockerfile
       target: test
+YAML
+    _emit_build_network_line
+    cat <<YAML
       args:
         APT_MIRROR_UBUNTU: \${APT_MIRROR_UBUNTU:-archive.ubuntu.com}
         APT_MIRROR_DEBIAN: \${APT_MIRROR_DEBIAN:-deb.debian.org}
@@ -838,7 +894,8 @@ write_env() {
   local _conf_hash="${1}"; shift
   local _network_name="${1:-}"; shift || true
   local _user_build_args="${1:-}"; shift || true
-  local _target_arch="${1:-}"
+  local _target_arch="${1:-}"; shift || true
+  local _build_network="${1:-}"
 
   local _comment=""
   _comment="$(_msg env_comment)"
@@ -907,6 +964,16 @@ EOF
       printf 'TARGET_ARCH=%q\n' "${_target_arch}"
     } >> "${_env_file}"
   fi
+
+  # BUILD_NETWORK override: only emit when the user set [build] network.
+  # Empty stays unset so build.sh skips the `--network` flag and docker
+  # compose build inherits its default.
+  if [[ -n "${_build_network:-}" ]]; then
+    {
+      printf '\n# ── BUILD_NETWORK override (from [build] network) ──\n'
+      printf 'BUILD_NETWORK=%q\n' "${_build_network}"
+    } >> "${_env_file}"
+  fi
 }
 
 # ════════════════════════════════════════════════════════════════════
@@ -962,13 +1029,16 @@ _check_setup_drift() {
 # ════════════════════════════════════════════════════════════════════
 # main
 #
-# Usage: main [--base-path <path>] [--lang <en|zh-TW|zh-CN|ja>]
+# Usage: main [-h|--help] [--base-path <path>] [--lang <en|zh-TW|zh-CN|ja>]
 # ════════════════════════════════════════════════════════════════════
 main() {
   local _base_path=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      -h|--help)
+        usage
+        ;;
       --base-path)
         _base_path="${2:?"--base-path requires a value"}"
         shift 2
@@ -986,7 +1056,7 @@ main() {
   done
 
   if [[ -z "${_base_path}" ]]; then
-    _base_path="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")/../../.." && pwd -P)"
+    _base_path="$(cd -- "${_SETUP_SCRIPT_DIR}/../../.." && pwd -P)"
   fi
 
   local _env_file="${_base_path}/.env"
@@ -1078,6 +1148,14 @@ main() {
   local target_arch=""
   _get_conf_value _build_k _build_v "target_arch" "" target_arch
 
+  # Build-time network override: scalar `[build] network`. Empty =
+  # docker default (bridge). Non-empty = passed as `build.network` in
+  # compose.yaml and `--network <value>` to the auxiliary test-tools
+  # docker build. Typical value: `host`, for hosts whose docker bridge
+  # NAT is unusable (stripped embedded kernels, iptables:false).
+  local build_network=""
+  _get_conf_value _build_k _build_v "network" "" build_network
+
   local gpu_mode="" gpu_count="" gpu_caps=""
   local gui_mode=""
   local net_mode="" ipc_mode="" privileged="" network_name=""
@@ -1126,7 +1204,7 @@ main() {
     fi
     [[ -d "${ws_path}" ]] && ws_path="$(cd "${ws_path}" && pwd -P)"
     local _tpl_conf
-    _tpl_conf="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd -P)/../../setup.conf"
+    _tpl_conf="${_SETUP_SCRIPT_DIR}/../../setup.conf"
     if [[ -f "${_tpl_conf}" ]]; then
       cp "${_tpl_conf}" "${_repo_conf}"
       _upsert_conf_value "${_repo_conf}" "volumes" "mount_1" \
@@ -1223,7 +1301,7 @@ main() {
   # down default — avoids surprising the user with "my container lost
   # SYS_ADMIN / unconfined seccomp after I cleared the list".
   local _tpl_setup_conf
-  _tpl_setup_conf="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd -P)/../../setup.conf"
+  _tpl_setup_conf="${_SETUP_SCRIPT_DIR}/../../setup.conf"
   local -a _tpl_sec_k=() _tpl_sec_v=()
   [[ -f "${_tpl_setup_conf}" ]] \
     && _parse_ini_section "${_tpl_setup_conf}" "security" _tpl_sec_k _tpl_sec_v
@@ -1269,7 +1347,8 @@ main() {
     "${gui_detected}" "${conf_hash}" \
     "${network_name}" \
     "${_user_build_args_str}" \
-    "${target_arch}"
+    "${target_arch}" \
+    "${build_network}"
 
   generate_compose_yaml "${_base_path}/compose.yaml" "${image_name}" \
     "${gui_enabled_eff}" "${gpu_enabled_eff}" \
@@ -1281,7 +1360,8 @@ main() {
     "${_cap_add_str}" "${_cap_drop_str}" "${_sec_opt_str}" \
     "${_cgroup_rule_str}" \
     "${_user_build_args_str}" \
-    "${target_arch}"
+    "${target_arch}" \
+    "${build_network}"
 
   printf "[setup] %s\n" "$(_msg env_done)"
   printf "[setup] USER=%s (%s:%s)  GPU=%s/%s  GUI=%s/%s  IMAGE=%s  WS=%s\n" \

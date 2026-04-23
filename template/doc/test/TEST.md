@@ -1,10 +1,10 @@
 # TEST.md
 
-Template self-tests: **531 tests** total (498 unit + 33 integration).
+Template self-tests: **610 tests** total (567 unit + 43 integration).
 
 ## Test Files
 
-### test/unit/lib_spec.bats (25)
+### test/unit/lib_spec.bats (26)
 
 | Test | Description |
 |------|-------------|
@@ -34,7 +34,7 @@ Template self-tests: **531 tests** total (498 unit + 33 integration).
 | `_print_config_summary hides sections that are empty in setup.conf` | Empty-section skip |
 | `_print_config_summary warns when setup.conf is missing` | Missing-conf hint |
 
-### test/unit/setup_spec.bats (95)
+### test/unit/setup_spec.bats (97)
 
 Covers core detection (user/hardware/docker/GPU/GUI), the INI parser
 (`_parse_ini_section`), setup.conf section merging (`_load_setup_conf`
@@ -61,7 +61,7 @@ writeback (first-time bootstrap / user-edit respect / opt-out).
 | `[build]` apt_mirror (empty fallback, override) | 2 |
 | Workspace writeback (first-time, respect user edit, opt-out) | 3 |
 
-### test/unit/tui_spec.bats (59)
+### test/unit/tui_spec.bats (70)
 
 Pure-logic unit tests for the TUI support libraries (`_tui_conf.sh`).
 No dialog/whiptail invocations here — strictly validators, mount-string
@@ -76,7 +76,7 @@ parsers, and setup.conf round-trip.
 | `_load_setup_conf_full` + `_write_setup_conf` (section order, kv, comment preservation, untouched keys, round-trip) | 5 |
 | `_upsert_conf_value` (updates existing, leaves other sections untouched) | 2 |
 
-### test/unit/tui_backend_spec.bats (11)
+### test/unit/tui_backend_spec.bats (23)
 
 Backend detection and wrapper-level arg forwarding. Uses a stub
 `dialog` / `whiptail` binary installed on PATH that logs argv and echoes
@@ -92,7 +92,7 @@ a canned response; exercised with `TUI_STUB_RESPONSE` / `TUI_STUB_EXIT`.
 | `_tui_checklist` (passes `--separate-output`) | 1 |
 | `_tui_msgbox` / `_tui_yesno` (correct flags, propagates exit code) | 2 |
 
-### test/unit/build_sh_spec.bats (23)
+### test/unit/build_sh_spec.bats (32)
 
 Unit tests for `build.sh` argument handling and control flow. Uses a
 sandbox tree mirroring the expected layout (build.sh + `template/` subtree
@@ -106,10 +106,12 @@ all three are present, bootstrap staying non-interactive (setup.sh
 direct, not `setup_tui.sh`), defensive guard when setup produces no
 `.env`, TARGETARCH build-arg forwarding, `--no-cache`, `--clean-tools`,
 positional `TARGET`, `--lang` argument validation, fallback
-`_detect_lang` branches (zh_TW/zh_CN/ja), and real (non-dry-run)
-docker build invocation.
+`_detect_lang` branches (zh_TW/zh_CN/ja), real (non-dry-run) docker
+build invocation, and **runtime log-line i18n** (bootstrap /
+drift-regen / err_no_env messages translate in all four languages via
+the local `_msg()` table; English remains the default).
 
-### test/unit/run_sh_spec.bats (24)
+### test/unit/run_sh_spec.bats (30)
 
 Unit tests for `run.sh`. Mirrors the build_sh_spec.bats harness;
 `docker ps` reads from a controllable stub file so tests can simulate
@@ -121,9 +123,40 @@ bootstrap staying non-interactive (setup.sh, not TUI), defensive guard
 when setup produces no `.env`, `--detach`, devel vs non-devel TARGET
 routing, `--instance`, already-running guard, Wayland xhost path,
 `--lang` / `--instance` argument validation, fallback `_detect_lang`
-branches.
+branches, and **runtime log-line i18n** (bootstrap + already-running
+error translate in all four languages via the local `_msg()` table).
 
-### test/unit/compose_gen_spec.bats (31)
+### test/unit/exec_sh_spec.bats (18)
+
+Unit tests for `exec.sh` argument parsing, the container-running
+precheck, and i18n. Sandbox tree mirrors build_sh_spec.bats;
+`docker ps` reads from a controllable stub file so tests can toggle
+"container running" state without a real docker daemon. `.env` is
+pre-seeded so `_load_env` / `_compute_project_name` succeed without a
+bootstrap step.
+
+Covers: `--help` (en/zh/zh-CN/ja), `--lang` / `--target` / `--instance`
+value validation, English-default not-running error, Chinese /
+Simplified Chinese / Japanese not-running error text, instance-specific
+vs default start hints, `--dry-run` bypassing the guard, compose exec
+routing when container is running, and fallback `_detect_lang`
+branches when `template/` is absent.
+
+### test/unit/stop_sh_spec.bats (16)
+
+Unit tests for `stop.sh` argument parsing, the `--all` multi-instance
+teardown, and i18n. `docker ps -a` output is PATH-shimmed via
+`${DOCKER_PS_A_FILE}` so tests can seed the project list for the `--all`
+branch.
+
+Covers: `--help` (en/zh/zh-CN/ja), `--lang` / `--instance` value
+validation, default teardown via `docker compose down`, named-instance
+suffix in project name, `--all` no-instances English message,
+Chinese / Simplified Chinese / Japanese translations of the
+no-instances message, `--all` multi-project teardown loop, and
+fallback `_detect_lang` branches.
+
+### test/unit/compose_gen_spec.bats (35)
 
 Covers `generate_compose_yaml` conditional output: AUTO-GENERATED
 header, baseline workspace volume, network/ipc/privileged env-var
@@ -407,7 +440,44 @@ Exercises the runtime assertion helpers shipped in
 | `main copies tmux.conf to config directory` | Config copy |
 | `script runs entry_point when executed directly` | Direct-run guard |
 
-### test/integration/init_new_repo_spec.bats (33)
+### test/unit/upgrade_spec.bats (20)
+
+Unit tests for `upgrade.sh` helpers. Uses the sed-range pattern to extract
+one function at a time into a minimal harness (with `_log` / `_error`
+stubs), so each helper runs in a sandboxed git repo without needing to
+source the full `upgrade.sh` (which would trigger its top-level
+`cd REPO_ROOT`).
+
+Covers: `_warn_config_drift` (silent / fires on drift / diff hint),
+the three safety guards added after the v0.9.7 Jetson incident
+(`_require_git_identity`, `_require_clean_merge_state`,
+`_verify_subtree_intact` with rollback), and structural invariants that
+pin call-ordering in `_upgrade` (identity check runs before subtree
+pull, integrity verification runs after, pre-pull HEAD is snapshotted
+for rollback).
+
+| Test | Description |
+|------|-------------|
+| `_warn_config_drift silent when no template/config in HEAD` | Initial setup |
+| `_warn_config_drift silent when pre and post hashes match` | No drift |
+| `_warn_config_drift prints WARNING + diff hint when hashes differ` | Drift reported |
+| `upgrade.sh defines _warn_config_drift` | Helper present |
+| `upgrade.sh invokes _warn_config_drift after subtree pull` | Call site present |
+| `upgrade.sh captures pre-pull template/config tree hash` | Snapshot taken |
+| `_require_git_identity succeeds when name + email are set` | Happy path |
+| `_require_git_identity fails when user.email is unset` | Email guard |
+| `_require_git_identity fails when user.name is unset` | Name guard |
+| `_require_clean_merge_state succeeds in clean repo` | Happy path |
+| `_require_clean_merge_state fails when MERGE_HEAD exists` | Mid-merge guard |
+| `_require_clean_merge_state fails when rebase-merge dir exists` | Mid-rebase guard |
+| `_verify_subtree_intact succeeds when all markers present` | Happy path |
+| `_verify_subtree_intact rolls back when template/.version is missing` | Destructive-FF rollback |
+| `_verify_subtree_intact rolls back when template/script/docker/setup.sh is missing` | Marker rollback |
+| `upgrade.sh calls _require_git_identity before subtree pull` | Pre-flight ordering |
+| `upgrade.sh calls _verify_subtree_intact after subtree pull` | Post-flight ordering |
+| `upgrade.sh snapshots pre-pull HEAD for rollback` | Rollback anchor |
+
+### test/integration/init_new_repo_spec.bats (35)
 
 End-to-end verification that `init.sh` produces a complete repo skeleton in
 an empty directory. **Level 1** (file generation only, no Docker). The
@@ -444,3 +514,37 @@ which has access to a Docker daemon on the host runner.
 | `new repo: .gitignore contains .env (derived artifact)` | gitignore .env |
 | `new repo: compose.yaml has AUTO-GENERATED header (produced by setup.sh)` | setup.sh generated compose.yaml |
 | `new repo: per-repo setup.conf not created by default` | template default usage |
+
+### test/integration/fresh_clone_portability_spec.bats (2)
+
+End-to-end verification for the fresh-clone-on-a-different-machine scenario:
+the consumer repo's `setup.conf` has already been committed by another
+contributor and carries either a stale absolute `mount_1` path (the Jetson
+bug) or the portable `${WS_PATH}` form. Runs the real `build.sh` +
+`setup.sh` (no mocks) and asserts the auto-migration / per-machine detection
+pipeline lands a valid `.env` + `compose.yaml`. **Level 1** (no Docker
+invocation — `build.sh --dry-run`).
+
+| Test | Description |
+|------|-------------|
+| `fresh clone with stale absolute mount_1: build.sh auto-migrates + generates local .env` | Stale-path auto-migrate |
+| `fresh clone with portable ${WS_PATH} mount_1: no warning, .env gets local path` | Happy path round-trip |
+
+### test/integration/upgrade_spec.bats (6)
+
+End-to-end verification for `upgrade.sh` driving a real subtree update
+against a fake template remote (bare repo with `v0.9.5` / `v0.9.7` tags
+on a minimal subtree layout) attached to a sandbox downstream repo.
+**Level 1** (no Docker). Exercises the happy path, the pre-flight
+guards, and — most importantly — the destructive-FF rollback path added
+after the Jetson v0.9.7 incident (stubs `git-subtree pull` via
+`GIT_EXEC_PATH` to simulate the bug and asserts the repo is restored).
+
+| Test | Description |
+|------|-------------|
+| `upgrade.sh v0.9.7: bumps template/.version, pulls new content, updates main.yaml` | Happy path |
+| `upgrade.sh v0.9.7 is idempotent on a second run` | Re-run is no-op |
+| `upgrade.sh --check reports update available from v0.9.5 → v0.9.7` | --check flag |
+| `upgrade.sh fails fast when git identity is missing` | Pre-flight identity guard |
+| `upgrade.sh fails fast when MERGE_HEAD is present` | Pre-flight merge-state guard |
+| `upgrade.sh rolls back when git-subtree does a destructive fast-forward` | Destructive-FF rollback |

@@ -5,6 +5,117 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [v0.9.8] - 2026-04-23
+
+### Fixed
+- **`upgrade.sh` no longer leaves the repo destroyed if `git subtree
+  pull` misbehaves**. On Jetson L4T (ships an older `git-subtree.sh`),
+  running `upgrade.sh v0.9.5 → v0.9.7` fast-forwarded the synthetic
+  squash commit onto HEAD, moving `template/*` to repo root and
+  deleting repo-specific files (Dockerfile, compose.yaml, bridge.yaml,
+  etc.). `upgrade.sh` now:
+  - **Pre-flight** — fails fast with actionable messages when `git
+    config user.name / user.email` is unset (a Jetson-specific trigger
+    for the partial-state bug), or when a merge / rebase / cherry-pick
+    is in progress (`.git/MERGE_HEAD`, `.git/rebase-merge`, etc.).
+  - **Post-flight integrity check** — after the subtree pull, verifies
+    `template/.version`, `template/init.sh`, and
+    `template/script/docker/setup.sh` still exist. If any is missing,
+    hard-resets to the pre-pull HEAD and exits with a diagnostic. The
+    working tree is restored; no manual cleanup required.
+  - **Step numbering** — corrected from mixed "1/4 / 2/3 / 3/3" to
+    "1/4 / 2/4 / 3/4 / 4/4".
+- **`test/unit/upgrade_spec.bats`** gains 12 regression tests covering
+  the three new guards + structural invariants (ordering: identity
+  check before pull, integrity check after pull, HEAD snapshotted for
+  rollback).
+- **`test/integration/upgrade_spec.bats`** (new, 6 tests) drives the
+  real `upgrade.sh` end-to-end against a fake template remote (bare
+  repo with `v0.9.5` / `v0.9.7` tags) attached to a sandbox downstream
+  repo. Covers happy path (version bump, new content, `main.yaml`
+  `@tag` rewrite), idempotent re-run, `--check`, the two pre-flight
+  guards, and the destructive-FF rollback (stubs `git-subtree pull`
+  via `GIT_EXEC_PATH` to simulate the Jetson bug, asserts repo is
+  restored to pre-pull HEAD). Total: 592 → 610 (+12 unit + 6
+  integration).
+
+## [v0.9.7] - 2026-04-23
+
+### Changed
+- **Full i18n coverage for `build.sh` / `run.sh` / `exec.sh` / `stop.sh`**.
+  Previously only `usage()` (help text) honoured `--lang` / `SETUP_LANG`;
+  runtime log lines (`First run — bootstrapping`, `regenerating .env /
+  compose.yaml`, `ERROR: setup did not produce .env`, `Container is
+  already running`, `is not running`, `No instances found`, ...) were
+  hardcoded English regardless of language. Each script now ships a
+  local `_msg()` translation table covering `en` / `zh-TW` / `zh-CN` /
+  `ja`, matching the existing `setup.sh` pattern. English remains the
+  default when no flag / env var is set, so existing tooling and CI
+  output are unchanged.
+
+### Added
+- **Root-level `setup.sh` symlink**. `init.sh` now links
+  `<repo>/setup.sh` to `template/script/docker/setup.sh` alongside the
+  existing `build.sh` / `run.sh` / `exec.sh` / `stop.sh` / `setup_tui.sh`
+  / `Makefile` symlinks. Consumer repos can now invoke `./setup.sh`
+  directly for scripted / CI regeneration of `.env` + `compose.yaml`,
+  instead of relying on the indirect `./build.sh --setup` or
+  `./setup_tui.sh` Save paths.
+- **`setup.sh -h` / `--help`**. `script/docker/setup.sh` gains a
+  `usage()` block documenting `--base-path` and `--lang`, following the
+  existing `build.sh` case-per-`_LANG` scaffolding (English-only for
+  now; future translations plug in via the existing `_msg` framework).
+- **`test/unit/exec_sh_spec.bats`** (18 tests) and
+  **`test/unit/stop_sh_spec.bats`** (17 tests): new unit specs
+  covering argument parsing, the container-running precheck hints in
+  `exec.sh`, the `--all` / `--instance` branches in `stop.sh`, all
+  four languages of usage text, runtime log-line i18n, and the
+  fallback `_detect_lang` branches (`LANG=zh_TW.UTF-8` etc. when
+  `template/` is absent).
+- Log-line i18n regression tests in `test/unit/build_sh_spec.bats`
+  (+7) and `test/unit/run_sh_spec.bats` (+6) assert that `--lang
+  <code>` actually translates the runtime logs (bootstrap, drift-regen,
+  err_no_env, already-running), not just `--help`.
+
+### Fixed
+- **`setup.sh` symlink-invocation robustness**. `setup.sh` previously
+  located its `i18n.sh` / `_tui_conf.sh` siblings and the template
+  `setup.conf` via `dirname "${BASH_SOURCE[0]}"`, which resolved to the
+  repo root when the script was invoked through `<repo>/setup.sh`
+  (symlink). `setup.sh` now runs `readlink -f` once at load and stores
+  the real script directory in `_SETUP_SCRIPT_DIR`; every sibling
+  source and template-relative path reads from that variable.
+
+## [v0.9.6] - 2026-04-23
+
+### Added
+- **`[build] network` setup.conf key**: overrides Docker's build-time
+  network mode. Empty (default) = Docker decides (bridge + NAT). Set
+  to `host` when the host's bridge NAT is unusable: stripped embedded
+  kernels (e.g. Jetson L4T missing `iptable_raw`), hosts with
+  `"iptables": false` in daemon.json, or firewall-locked CI runners.
+  `setup.sh` writes `BUILD_NETWORK=<value>` to `.env` and emits
+  `build.network: <value>` under each service in `compose.yaml`;
+  `build.sh` forwards `--network <value>` to the auxiliary
+  `docker build` invocation for `test-tools`. `setup_tui.sh` gains a
+  matching `[build] Build network` menu item and
+  `_validate_build_network` validator (accepts empty / `host` /
+  `bridge` / `none` / `default`).
+- **Integration test** `fresh_clone_portability_spec.bats` covers the
+  fresh-clone-on-a-different-machine path end-to-end (real `build.sh`
+  + `setup.sh`, no mocks): both the stale-absolute-path auto-migrate
+  and the portable `${WS_PATH}` round-trip.
+
+### Changed
+- **`_dump_conf_section` hides empty-valued keys** in the
+  `_print_config_summary` output. Lines like `shm_size =` (using the
+  template default) are noise in the config dump; they're now
+  filtered. Sections whose every key is empty collapse to nothing and
+  the section header is skipped too (via the existing
+  `[[ -z ${_content} ]]` check in the caller).
+
 ## [v0.9.5] - 2026-04-23
 
 ### Changed
