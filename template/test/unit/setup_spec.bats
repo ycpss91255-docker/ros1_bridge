@@ -1,5 +1,7 @@
 #!/usr/bin/env bats
 
+bats_require_minimum_version 1.5.0
+
 setup() {
   load "${BATS_TEST_DIRNAME}/test_helper"
 
@@ -115,173 +117,455 @@ esac'
 }
 
 # ════════════════════════════════════════════════════════════════════
-# detect_image_name
+# detect_gpu_count
 # ════════════════════════════════════════════════════════════════════
 
-@test "detect_image_name finds *_ws in path" {
+@test "detect_gpu_count returns count of GPUs from nvidia-smi -L output" {
+  mock_cmd "nvidia-smi" '
+if [[ "$1" == "-L" ]]; then
+  echo "GPU 0: NVIDIA A100 (UUID: ...)"
+  echo "GPU 1: NVIDIA A100 (UUID: ...)"
+  echo "GPU 2: NVIDIA A100 (UUID: ...)"
+fi'
+  local _n=0
+  detect_gpu_count _n
+  assert_equal "${_n}" "3"
+}
+
+@test "detect_gpu_count returns 0 when nvidia-smi is missing" {
+  # Point PATH at MOCK_DIR only (no nvidia-smi stub installed) so the
+  # command -v check fails.
+  local _saved_path="${PATH}"
+  PATH="${MOCK_DIR}"
+  local _n=99
+  detect_gpu_count _n
+  PATH="${_saved_path}"
+  assert_equal "${_n}" "0"
+}
+
+@test "detect_gpu_count returns 0 when nvidia-smi fails (driver broken)" {
+  mock_cmd "nvidia-smi" 'exit 9'
+  local _n=99
+  detect_gpu_count _n
+  assert_equal "${_n}" "0"
+}
+
+@test "template setup.conf ships [devices] device_1 = /dev:/dev by default" {
+  # Dev-friendly default: new repos get full /dev tree bound without
+  # needing to run TUI. Template source-of-truth.
+  run grep -E '^device_1 = /dev:/dev$' /source/setup.conf
+  assert_success
+}
+
+@test "template setup.conf [deploy] enables ALL GPU capabilities by default" {
+  # Dev-friendly: reserve every GPU capability so new repos get
+  # compute + utility + graphics out of the box (no need to tick boxes
+  # in TUI). Users narrow it down via ./setup_tui.sh deploy if they want
+  # a minimal reservation.
+  run grep -E '^gpu_capabilities = gpu compute utility graphics$' /source/setup.conf
+  assert_success
+}
+
+@test "[security] cap_add_* fallback: repo setup.conf with no cap_add_* uses template defaults" {
+  # Simulate a repo override that keeps privileged=false but wiped all
+  # cap_add_* entries. Expected behaviour: setup.sh falls back to the
+  # template's baseline (SYS_ADMIN / NET_ADMIN / MKNOD) so the container
+  # does not silently drop to Docker's stripped-down default capability
+  # set.
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[security]
+privileged = false
+EOF
+  unset SETUP_CONF
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${TEMP_DIR}' 2>&1
+  "
+  assert_success
+  run grep -F -- '- SYS_ADMIN' "${TEMP_DIR}/compose.yaml"
+  assert_success
+  run grep -F -- '- NET_ADMIN' "${TEMP_DIR}/compose.yaml"
+  assert_success
+  run grep -F -- '- MKNOD' "${TEMP_DIR}/compose.yaml"
+  assert_success
+}
+
+@test "[security] security_opt_* fallback: missing security_opt_* uses template defaults" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[security]
+privileged = false
+EOF
+  unset SETUP_CONF
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${TEMP_DIR}' 2>&1
+  "
+  assert_success
+  run grep -F -- '- seccomp:unconfined' "${TEMP_DIR}/compose.yaml"
+  assert_success
+}
+
+@test "[security] cap_add_* explicit override: user-provided list is honored (no template fallback)" {
+  # User set cap_add_1=ALL explicitly: compose should use THAT, not the
+  # template's SYS_ADMIN/NET_ADMIN/MKNOD.
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[security]
+privileged = false
+cap_add_1 = ALL
+EOF
+  unset SETUP_CONF
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${TEMP_DIR}' 2>&1
+  "
+  assert_success
+  run grep -F -- '- ALL' "${TEMP_DIR}/compose.yaml"
+  assert_success
+  # Template's SYS_ADMIN/NET_ADMIN/MKNOD should NOT appear.
+  run grep -F -- '- SYS_ADMIN' "${TEMP_DIR}/compose.yaml"
+  assert_failure
+}
+
+@test "detect_gpu_count nameref survives caller-local named '_line' (regression)" {
+  # Regression: previously detect_gpu_count used `local _line` internally,
+  # which shadowed a caller-local also named `_line`; the nameref outvar
+  # then silently wrote to the function-local `_line`, never reaching the
+  # caller. The fix uses `__dgc_`-prefixed locals.
+  mock_cmd "nvidia-smi" '
+if [[ "$1" == "-L" ]]; then
+  echo "GPU 0: A"
+  echo "GPU 1: B"
+fi'
+  local _line=99
+  detect_gpu_count _line
+  assert_equal "${_line}" "2"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# detect_gui
+# ════════════════════════════════════════════════════════════════════
+
+@test "detect_gui returns true when DISPLAY is set" {
   local _result
-  detect_image_name _result "/home/user/myapp_ws/src/docker"
+  DISPLAY=":0" WAYLAND_DISPLAY="" detect_gui _result
+  assert_equal "${_result}" "true"
+}
+
+@test "detect_gui returns true when WAYLAND_DISPLAY is set" {
+  local _result
+  DISPLAY="" WAYLAND_DISPLAY="wayland-0" detect_gui _result
+  assert_equal "${_result}" "true"
+}
+
+@test "detect_gui returns false when both DISPLAY and WAYLAND_DISPLAY unset" {
+  local _result
+  DISPLAY="" WAYLAND_DISPLAY="" detect_gui _result
+  assert_equal "${_result}" "false"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _parse_ini_section
+# ════════════════════════════════════════════════════════════════════
+
+@test "_parse_ini_section reads keys and values for one section" {
+  local _conf="${TEMP_DIR}/setup.conf"
+  cat > "${_conf}" <<'EOF'
+[gpu]
+mode = auto
+count = all
+capabilities = gpu
+EOF
+  local -a _k=() _v=()
+  _parse_ini_section "${_conf}" "gpu" _k _v
+  assert_equal "${#_k[@]}" "3"
+  assert_equal "${_k[0]}" "mode"
+  assert_equal "${_v[0]}" "auto"
+  assert_equal "${_k[1]}" "count"
+  assert_equal "${_v[1]}" "all"
+}
+
+@test "_parse_ini_section isolates sections (entries from other sections ignored)" {
+  local _conf="${TEMP_DIR}/setup.conf"
+  cat > "${_conf}" <<'EOF'
+[gpu]
+mode = auto
+
+[gui]
+mode = off
+EOF
+  local -a _k=() _v=()
+  _parse_ini_section "${_conf}" "gui" _k _v
+  assert_equal "${#_k[@]}" "1"
+  assert_equal "${_k[0]}" "mode"
+  assert_equal "${_v[0]}" "off"
+}
+
+@test "_parse_ini_section skips comment and empty lines" {
+  local _conf="${TEMP_DIR}/setup.conf"
+  cat > "${_conf}" <<'EOF'
+# top comment
+[network]
+# inside comment
+mode = host
+
+ipc = host
+
+# trailing
+EOF
+  local -a _k=() _v=()
+  _parse_ini_section "${_conf}" "network" _k _v
+  assert_equal "${#_k[@]}" "2"
+  assert_equal "${_k[0]}" "mode"
+  assert_equal "${_k[1]}" "ipc"
+}
+
+@test "_parse_ini_section trims whitespace around key and value" {
+  local _conf="${TEMP_DIR}/setup.conf"
+  printf '[gpu]\n  mode  =  force  \n' > "${_conf}"
+  local -a _k=() _v=()
+  _parse_ini_section "${_conf}" "gpu" _k _v
+  assert_equal "${_k[0]}" "mode"
+  assert_equal "${_v[0]}" "force"
+}
+
+@test "_parse_ini_section returns empty arrays for missing file" {
+  local -a _k=() _v=()
+  _parse_ini_section "${TEMP_DIR}/missing.conf" "gpu" _k _v
+  assert_equal "${#_k[@]}" "0"
+  assert_equal "${#_v[@]}" "0"
+}
+
+@test "_parse_ini_section returns empty arrays for absent section" {
+  local _conf="${TEMP_DIR}/setup.conf"
+  cat > "${_conf}" <<'EOF'
+[gpu]
+mode = auto
+EOF
+  local -a _k=() _v=()
+  _parse_ini_section "${_conf}" "gui" _k _v
+  assert_equal "${#_k[@]}" "0"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _load_setup_conf (per-repo replace / template fallback)
+# ════════════════════════════════════════════════════════════════════
+
+@test "_load_setup_conf honors SETUP_CONF env var override" {
+  local _override="${TEMP_DIR}/override.conf"
+  cat > "${_override}" <<'EOF'
+[gpu]
+mode = off
+count = 0
+EOF
+  local -a _k=() _v=()
+  SETUP_CONF="${_override}" _load_setup_conf "${TEMP_DIR}" "gpu" _k _v
+  assert_equal "${#_k[@]}" "2"
+  assert_equal "${_v[0]}" "off"
+}
+
+@test "_load_setup_conf uses per-repo setup.conf when section present" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[gpu]
+mode = force
+EOF
+  unset SETUP_CONF
+  local -a _k=() _v=()
+  _load_setup_conf "${TEMP_DIR}" "gpu" _k _v
+  assert_equal "${_v[0]}" "force"
+}
+
+@test "_load_setup_conf falls back to template when section absent per-repo" {
+  # Per-repo file has [gpu] but NOT [gui]
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[gpu]
+mode = force
+EOF
+  unset SETUP_CONF
+  local -a _k=() _v=()
+  _load_setup_conf "${TEMP_DIR}" "gui" _k _v
+  # Template default has [gui] mode = auto
+  assert_equal "${_v[0]}" "auto"
+}
+
+@test "_load_setup_conf replace strategy: per-repo section fully replaces template section" {
+  # Template [gpu] has mode+count+capabilities; per-repo only sets mode=off
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[gpu]
+mode = off
+EOF
+  unset SETUP_CONF
+  local -a _k=() _v=()
+  _load_setup_conf "${TEMP_DIR}" "gpu" _k _v
+  # Replace strategy: only "mode" — no count, no capabilities inherited
+  assert_equal "${#_k[@]}" "1"
+  assert_equal "${_k[0]}" "mode"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _get_conf_value / _get_conf_list_sorted
+# ════════════════════════════════════════════════════════════════════
+
+@test "_get_conf_value returns value for present key" {
+  local -a _k=("mode" "count") _v=("auto" "all")
+  local _out
+  _get_conf_value _k _v "mode" "DEFAULT" _out
+  assert_equal "${_out}" "auto"
+}
+
+@test "_get_conf_value returns default for absent key" {
+  local -a _k=("mode") _v=("auto")
+  local _out
+  _get_conf_value _k _v "missing" "DEFAULT" _out
+  assert_equal "${_out}" "DEFAULT"
+}
+
+@test "_get_conf_list_sorted returns values sorted by numeric suffix" {
+  local -a _k=("mount_3" "mount_1" "mount_10" "mount_2")
+  local -a _v=("/three:/three" "/one:/one" "/ten:/ten" "/two:/two")
+  local -a _out=()
+  _get_conf_list_sorted _k _v "mount_" _out
+  assert_equal "${#_out[@]}" "4"
+  assert_equal "${_out[0]}" "/one:/one"
+  assert_equal "${_out[1]}" "/two:/two"
+  assert_equal "${_out[2]}" "/three:/three"
+  assert_equal "${_out[3]}" "/ten:/ten"
+}
+
+@test "_get_conf_list_sorted skips non-matching keys" {
+  local -a _k=("mount_1" "mode" "mount_2")
+  local -a _v=("/a:/a" "auto" "/b:/b")
+  local -a _out=()
+  _get_conf_list_sorted _k _v "mount_" _out
+  assert_equal "${#_out[@]}" "2"
+  assert_equal "${_out[0]}" "/a:/a"
+  assert_equal "${_out[1]}" "/b:/b"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _resolve_gpu / _resolve_gui
+# ════════════════════════════════════════════════════════════════════
+
+@test "_resolve_gpu auto + detected=true => enabled" {
+  local _out
+  _resolve_gpu "auto" "true" _out
+  assert_equal "${_out}" "true"
+}
+
+@test "_resolve_gpu auto + detected=false => disabled" {
+  local _out
+  _resolve_gpu "auto" "false" _out
+  assert_equal "${_out}" "false"
+}
+
+@test "_resolve_gpu force => enabled regardless of detection" {
+  local _out
+  _resolve_gpu "force" "false" _out
+  assert_equal "${_out}" "true"
+}
+
+@test "_resolve_gpu off => disabled regardless of detection" {
+  local _out
+  _resolve_gpu "off" "true" _out
+  assert_equal "${_out}" "false"
+}
+
+@test "_resolve_gui auto + detected=true => enabled" {
+  local _out
+  _resolve_gui "auto" "true" _out
+  assert_equal "${_out}" "true"
+}
+
+@test "_resolve_gui force => enabled regardless" {
+  local _out
+  _resolve_gui "force" "false" _out
+  assert_equal "${_out}" "true"
+}
+
+@test "_resolve_gui off => disabled regardless" {
+  local _out
+  _resolve_gui "off" "true" _out
+  assert_equal "${_out}" "false"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# detect_image_name (now reads [image] rules from setup.conf)
+# ════════════════════════════════════════════════════════════════════
+
+@test "detect_image_name uses template default rules (prefix:docker_ → strip)" {
+  local _result
+  unset SETUP_CONF
+  detect_image_name _result "/home/user/docker_myapp"
   assert_equal "${_result}" "myapp"
 }
 
-@test "detect_image_name finds *_ws at end of path" {
+@test "detect_image_name uses template default rules (suffix:_ws → strip)" {
   local _result
+  unset SETUP_CONF
   detect_image_name _result "/home/user/projects/myapp_ws"
   assert_equal "${_result}" "myapp"
 }
 
-@test "detect_image_name prefers docker_* over *_ws in path" {
+@test "detect_image_name template default falls through to @basename for generic paths" {
   local _result
-  detect_image_name _result "/home/user/robot_ws/src/docker_nav"
+  unset SETUP_CONF
+  detect_image_name _result "/home/user/plainproject"
+  assert_equal "${_result}" "plainproject"
+}
+
+@test "detect_image_name honors per-repo setup.conf [image] rules" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[image]
+rule_1 = prefix:foo_
+rule_2 = @basename
+EOF
+  unset SETUP_CONF
+  local _result
+  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/home/user/foo_bar"
+  assert_equal "${_result}" "bar"
+}
+
+@test "detect_image_name rules apply in order (first match wins)" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[image]
+rule_1 = prefix:docker_
+rule_2 = suffix:_ws
+rule_3 = @default:unused
+EOF
+  unset SETUP_CONF
+  local _result
+  # path has docker_ prefix AND _ws somewhere — prefix wins
+  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/home/user/myapp_ws/src/docker_nav"
   assert_equal "${_result}" "nav"
 }
 
-@test "detect_image_name strips docker_ prefix from last dir" {
+@test "detect_image_name @default:<value> used when no rule matches" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[image]
+rule_1 = prefix:nonexistent_
+rule_2 = @default:myfallback
+EOF
+  unset SETUP_CONF
   local _result
-  detect_image_name _result "/home/user/projects/docker_myapp"
-  assert_equal "${_result}" "myapp"
-}
-
-@test "detect_image_name strips docker_ from absolute root" {
-  local _result
-  detect_image_name _result "/docker_project"
-  assert_equal "${_result}" "project"
-}
-
-@test "detect_image_name returns unknown for plain directory (default conf)" {
-  # default conf only has @env_example/prefix:docker_/suffix:_ws (no @basename)
-  local _result
-  detect_image_name _result "/home/user/projects/ros_noetic"
-  assert_equal "${_result}" "unknown"
-}
-
-@test "detect_image_name returns unknown for generic path (default conf)" {
-  local _result
-  detect_image_name _result "/home/user/myproject"
-  assert_equal "${_result}" "unknown"
+  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/home/user/plain"
+  assert_equal "${_result}" "myfallback"
 }
 
 @test "detect_image_name lowercases the result" {
   local _result
-  detect_image_name _result "/home/user/MyApp_ws/src/docker"
+  unset SETUP_CONF
+  detect_image_name _result "/home/user/docker_MyApp"
   assert_equal "${_result}" "myapp"
 }
 
-# ════════════════════════════════════════════════════════════════════
-# detect_image_name: image_name.conf rule engine
-# ════════════════════════════════════════════════════════════════════
-
-@test "detect_image_name uses repo-level image_name.conf when present" {
-  local _conf="${TEMP_DIR}/image_name.conf"
-  cat > "${_conf}" <<EOF
-prefix:foo_
-@basename
+@test "detect_image_name returns unknown when no rule matches and no @default" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[image]
+rule_1 = prefix:nonexistent_
 EOF
+  unset SETUP_CONF
   local _result
-  IMAGE_NAME_CONF="${_conf}" detect_image_name _result "/home/user/foo_myapp"
-  assert_equal "${_result}" "myapp"
-}
-
-@test "detect_image_name auto-discovers image_name.conf via BASE_PATH" {
-  cat > "${TEMP_DIR}/image_name.conf" <<EOF
-prefix:bar_
-@basename
-EOF
-  local _result
-  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/home/user/bar_myapp"
-  assert_equal "${_result}" "myapp"
-}
-
-@test "detect_image_name reads env_example rule from conf" {
-  local _conf="${TEMP_DIR}/image_name.conf"
-  local _example="${TEMP_DIR}/.env.example"
-  cat > "${_conf}" <<EOF
-@env_example
-@basename
-EOF
-  echo "IMAGE_NAME=from_example" > "${_example}"
-  local _result
-  BASE_PATH="${TEMP_DIR}" IMAGE_NAME_CONF="${_conf}" \
-    detect_image_name _result "/home/user/some_dir"
-  assert_equal "${_result}" "from_example"
-}
-
-@test "detect_image_name applies rules in order (first match wins)" {
-  local _conf="${TEMP_DIR}/image_name.conf"
-  cat > "${_conf}" <<EOF
-prefix:docker_
-suffix:_ws
-@basename
-EOF
-  local _result
-  # path has both docker_ and _ws — prefix wins
-  IMAGE_NAME_CONF="${_conf}" detect_image_name _result "/home/user/myapp_ws/src/docker_nav"
-  assert_equal "${_result}" "nav"
-}
-
-@test "detect_image_name skips comments and empty lines in conf" {
-  local _conf="${TEMP_DIR}/image_name.conf"
-  cat > "${_conf}" <<EOF
-# This is a comment
-prefix:foo_
-
-# Another comment
-@basename
-EOF
-  local _result
-  IMAGE_NAME_CONF="${_conf}" detect_image_name _result "/home/user/foo_myapp"
-  assert_equal "${_result}" "myapp"
-}
-
-@test "detect_image_name skips whitespace-only lines in conf" {
-  local _conf="${TEMP_DIR}/image_name.conf"
-  printf 'prefix:foo_\n   \n\t\n@basename\n' > "${_conf}"
-  local _result
-  IMAGE_NAME_CONF="${_conf}" detect_image_name _result "/home/user/foo_myapp"
-  assert_equal "${_result}" "myapp"
-}
-
-@test "detect_image_name returns unknown when no rule matches and no basename" {
-  local _conf="${TEMP_DIR}/image_name.conf"
-  cat > "${_conf}" <<EOF
-prefix:nonexistent_
-EOF
-  local _result
-  IMAGE_NAME_CONF="${_conf}" detect_image_name _result "/home/user/myapp"
+  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/home/user/plain"
   assert_equal "${_result}" "unknown"
-}
-
-@test "detect_image_name uses @basename when no other rule matches" {
-  local _conf="${TEMP_DIR}/image_name.conf"
-  cat > "${_conf}" <<EOF
-prefix:nonexistent_
-@basename
-EOF
-  local _result
-  IMAGE_NAME_CONF="${_conf}" detect_image_name _result "/home/user/myapp"
-  assert_equal "${_result}" "myapp"
-}
-
-@test "detect_image_name applies @default:<value> as fallback" {
-  local _conf="${TEMP_DIR}/image_name.conf"
-  cat > "${_conf}" <<EOF
-prefix:nonexistent_
-@default:my_repo
-EOF
-  local _result
-  IMAGE_NAME_CONF="${_conf}" detect_image_name _result "/home/user/myapp"
-  assert_equal "${_result}" "my_repo"
-}
-
-@test "detect_image_name @default:<value> is skipped if earlier rule matches" {
-  local _conf="${TEMP_DIR}/image_name.conf"
-  cat > "${_conf}" <<EOF
-prefix:foo_
-@default:my_repo
-EOF
-  local _result
-  IMAGE_NAME_CONF="${_conf}" detect_image_name _result "/home/user/foo_realname"
-  assert_equal "${_result}" "realname"
 }
 
 # ════════════════════════════════════════════════════════════════════
@@ -289,381 +573,522 @@ EOF
 # ════════════════════════════════════════════════════════════════════
 
 @test "detect_ws_path strategy 1: docker_* finds sibling *_ws" {
-  local _ws_dir="${TEMP_DIR}/myapp_ws"
-  local _proj_dir="${TEMP_DIR}/docker_myapp"
-  mkdir -p "${_ws_dir}" "${_proj_dir}"
+  local _ws_parent="${TEMP_DIR}/projects"
+  mkdir -p "${_ws_parent}/docker_myapp" "${_ws_parent}/myapp_ws"
   local _result
-  detect_ws_path _result "${_proj_dir}"
-  assert_equal "${_result}" "${_ws_dir}"
+  detect_ws_path _result "${_ws_parent}/docker_myapp"
+  assert_equal "${_result}" "${_ws_parent}/myapp_ws"
 }
 
 @test "detect_ws_path strategy 1: docker_* without sibling falls through" {
-  local _proj_dir="${TEMP_DIR}/docker_nosibling"
-  mkdir -p "${_proj_dir}"
+  local _parent="${TEMP_DIR}/projects"
+  mkdir -p "${_parent}/docker_myapp"
   local _result
-  detect_ws_path _result "${_proj_dir}"
-  # No sibling *_ws, no *_ws in path → falls back to parent
-  assert_equal "${_result}" "${TEMP_DIR}"
+  detect_ws_path _result "${_parent}/docker_myapp"
+  assert_equal "${_result}" "${_parent}"
 }
 
 @test "detect_ws_path strategy 2: finds _ws component in path" {
-  local _ws_dir="${TEMP_DIR}/myproject_ws"
-  local _sub_dir="${_ws_dir}/docker_ros"
-  mkdir -p "${_sub_dir}"
+  local _ws="${TEMP_DIR}/myapp_ws"
+  mkdir -p "${_ws}/src"
   local _result
-  detect_ws_path _result "${_sub_dir}"
-  assert_equal "${_result}" "${_ws_dir}"
+  detect_ws_path _result "${_ws}/src"
+  assert_equal "${_result}" "${_ws}"
 }
 
 @test "detect_ws_path strategy 3: falls back to parent directory" {
-  local _no_ws="${TEMP_DIR}/no_ws_here"
-  mkdir -p "${_no_ws}"
+  local _plain="${TEMP_DIR}/plain/project"
+  mkdir -p "${_plain}"
   local _result
-  detect_ws_path _result "${_no_ws}"
-  assert_equal "${_result}" "${TEMP_DIR}"
+  detect_ws_path _result "${_plain}"
+  assert_equal "${_result}" "${TEMP_DIR}/plain"
 }
 
 @test "detect_ws_path fails with ERROR when base_path does not exist" {
-  local _missing="${TEMP_DIR}/does_not_exist"
-  run bash -c "
-    source /source/script/docker/setup.sh
-    detect_ws_path _result '${_missing}'
-  "
-  assert_failure
-  assert_output --partial "ERROR"
-  assert_output --partial "${_missing}"
+  run -1 detect_ws_path _r "${TEMP_DIR}/nope"
+  assert_output --partial "base_path does not exist"
 }
 
-@test "detect_ws_path normalizes base_path containing .. (strategy 1)" {
-  # Ensure /foo/docker_myapp/../docker_myapp still resolves sibling myapp_ws
-  local _ws_dir="${TEMP_DIR}/myapp_ws"
-  local _proj_dir="${TEMP_DIR}/docker_myapp"
-  local _messy="${_proj_dir}/../docker_myapp"
-  mkdir -p "${_ws_dir}" "${_proj_dir}"
-  local _result
-  detect_ws_path _result "${_messy}"
-  assert_equal "${_result}" "${_ws_dir}"
+# ════════════════════════════════════════════════════════════════════
+# _compute_conf_hash
+# ════════════════════════════════════════════════════════════════════
+
+@test "_compute_conf_hash returns a sha256-shaped hex string" {
+  local _h
+  _compute_conf_hash "${TEMP_DIR}" _h
+  [[ "${_h}" =~ ^[0-9a-f]{64}$ ]]
 }
 
-@test "detect_ws_path normalizes base_path containing .. (strategy 3 fallback)" {
-  local _plain="${TEMP_DIR}/plain"
-  mkdir -p "${_plain}"
-  local _messy="${_plain}/../plain"
-  local _result
-  detect_ws_path _result "${_messy}"
-  # Expect normalized absolute parent of ${_plain}
-  assert_equal "${_result}" "${TEMP_DIR}"
+@test "_compute_conf_hash differs when per-repo setup.conf changes" {
+  local _h1 _h2
+  _compute_conf_hash "${TEMP_DIR}" _h1
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[gpu]
+mode = off
+EOF
+  _compute_conf_hash "${TEMP_DIR}" _h2
+  [[ "${_h1}" != "${_h2}" ]]
 }
 
 # ════════════════════════════════════════════════════════════════════
 # write_env
 # ════════════════════════════════════════════════════════════════════
 
-@test "write_env creates .env with all required variables" {
-  local _env_file="${TEMP_DIR}/.env"
-  write_env "${_env_file}" \
+@test "write_env creates .env with all required variables and SETUP_* metadata" {
+  local _env="${TEMP_DIR}/.env"
+  write_env "${_env}" \
     "testuser" "testgroup" "1001" "1001" \
-    "x86_64" "dockerhub" "false" \
+    "x86_64" "dockerhub" "true" \
     "ros_noetic" "/workspace" \
-    "tw.archive.ubuntu.com" "mirror.twds.com.tw"
+    "tw.archive.ubuntu.com" "mirror.twds.com.tw" "Asia/Taipei" \
+    "host" "host" "true" \
+    "all" "gpu" \
+    "true" "abc123"
 
-  assert [ -f "${_env_file}" ]
-  run grep "USER_NAME=testuser"        "${_env_file}"; assert_success
-  run grep "USER_GROUP=testgroup"      "${_env_file}"; assert_success
-  run grep "USER_UID=1001"             "${_env_file}"; assert_success
-  run grep "USER_GID=1001"             "${_env_file}"; assert_success
-  run grep "HARDWARE=x86_64"           "${_env_file}"; assert_success
-  run grep "DOCKER_HUB_USER=dockerhub" "${_env_file}"; assert_success
-  run grep "GPU_ENABLED=false"         "${_env_file}"; assert_success
-  run grep "IMAGE_NAME=ros_noetic"     "${_env_file}"; assert_success
-  run grep "WS_PATH=/workspace"        "${_env_file}"; assert_success
-}
-
-@test "write_env includes APT_MIRROR_UBUNTU" {
-  local _env_file="${TEMP_DIR}/.env"
-  write_env "${_env_file}" \
-    "u" "g" "1000" "1000" "x86_64" "hub" "false" "img" "/ws" \
-    "tw.archive.ubuntu.com" "mirror.twds.com.tw"
-  run grep "APT_MIRROR_UBUNTU=tw.archive.ubuntu.com" "${_env_file}"
+  assert [ -f "${_env}" ]
+  run grep 'USER_NAME=testuser' "${_env}"; assert_success
+  run grep 'USER_UID=1001'      "${_env}"; assert_success
+  run grep 'GPU_ENABLED=true'   "${_env}"; assert_success
+  run grep 'IMAGE_NAME=ros_noetic' "${_env}"; assert_success
+  run grep 'NETWORK_MODE=host'  "${_env}"; assert_success
+  run grep 'IPC_MODE=host'      "${_env}"; assert_success
+  run grep 'PRIVILEGED=true'    "${_env}"; assert_success
+  run grep 'GPU_COUNT=all'      "${_env}"; assert_success
+  run grep -F 'GPU_CAPABILITIES="gpu"' "${_env}"; assert_success
+  run grep 'SETUP_CONF_HASH=abc123' "${_env}"; assert_success
+  run grep 'SETUP_GUI_DETECTED=true' "${_env}"; assert_success
+  run grep -E '^SETUP_TIMESTAMP=' "${_env}"; assert_success
+  run grep 'APT_MIRROR_UBUNTU=tw.archive.ubuntu.com' "${_env}"; assert_success
+  run grep 'APT_MIRROR_DEBIAN=mirror.twds.com.tw' "${_env}"; assert_success
+  run grep 'TZ=Asia/Taipei' "${_env}"; assert_success
+  # bash-source round-trip: re-loading the file must not raise a
+  # "command not found" on any multi-word value (regression: previously
+  # GPU_CAPABILITIES="gpu compute utility graphics" was unquoted).
+  run bash -c "set -o allexport; source '${_env}'"
   assert_success
-}
-
-@test "write_env includes APT_MIRROR_DEBIAN" {
-  local _env_file="${TEMP_DIR}/.env"
-  write_env "${_env_file}" \
-    "u" "g" "1000" "1000" "x86_64" "hub" "false" "img" "/ws" \
-    "tw.archive.ubuntu.com" "mirror.twds.com.tw"
-  run grep "APT_MIRROR_DEBIAN=mirror.twds.com.tw" "${_env_file}"
-  assert_success
+  refute_output --partial "command not found"
 }
 
 # ════════════════════════════════════════════════════════════════════
-# main
+# _check_setup_drift
 # ════════════════════════════════════════════════════════════════════
 
-@test "main creates .env when it does not exist" {
-  local _ws="${TEMP_DIR}/test_ws"
-  mkdir -p "${_ws}"
-  run bash -c "
-    source /source/script/docker/setup.sh
-    detect_ws_path() { local -n _o=\$1; _o='${_ws}'; }
-    main --base-path '${TEMP_DIR}'
-  "
-  assert_success
-  assert [ -f "${TEMP_DIR}/.env" ]
-}
-
-@test "main sources existing .env and reuses valid WS_PATH" {
-  local _ws="${TEMP_DIR}/existing_ws"
-  mkdir -p "${_ws}"
-  cat > "${TEMP_DIR}/.env" << EOF
-WS_PATH=${_ws}
-EOF
-  run bash -c "
-    source /source/script/docker/setup.sh
-    main --base-path '${TEMP_DIR}'
-  "
-  assert_success
-  run grep "WS_PATH=${_ws}" "${TEMP_DIR}/.env"
+@test "_check_setup_drift no-op when .env missing" {
+  run _check_setup_drift "${TEMP_DIR}"
   assert_success
 }
 
-@test "main re-detects WS_PATH when path in .env no longer exists" {
-  local _new_ws="${TEMP_DIR}/new_ws"
-  mkdir -p "${_new_ws}"
-  cat > "${TEMP_DIR}/.env" << EOF
-WS_PATH=/this/path/does/not/exist
-EOF
-  run bash -c "
-    source /source/script/docker/setup.sh
-    detect_ws_path() { local -n _o=\$1; _o='${_new_ws}'; }
-    main --base-path '${TEMP_DIR}'
-  "
+@test "_check_setup_drift silent when nothing changed" {
+  # Prime .env by running a full setup cycle (write_env + _compute_conf_hash)
+  local _h=""
+  _compute_conf_hash "${TEMP_DIR}" _h
+  write_env "${TEMP_DIR}/.env" \
+    "user" "group" "$(id -u)" "$(id -g)" \
+    "x86_64" "hub" "false" \
+    "img" "${TEMP_DIR}" \
+    "tw.archive.ubuntu.com" "mirror.twds.com.tw" "Asia/Taipei" \
+    "host" "host" "true" "all" "gpu" \
+    "false" "${_h}"
+  # stub detect_gui/detect_gpu to match stored false
+  detect_gui() { local -n _o=$1; _o="false"; }
+  detect_gpu() { local -n _o=$1; _o="false"; }
+
+  run _check_setup_drift "${TEMP_DIR}"
   assert_success
-  run grep "WS_PATH=${_new_ws}" "${TEMP_DIR}/.env"
-  assert_success
+  refute_output --partial "WARNING"
 }
 
-@test "main: env_example rule reads IMAGE_NAME from .env.example" {
-  # Default conf has env_example before basename, so .env.example wins
-  local _ws="${TEMP_DIR}/test_ws"
-  local _proj="${TEMP_DIR}/my_generic_project"
-  mkdir -p "${_ws}" "${_proj}"
+@test "_check_setup_drift warns when conf hash changes" {
+  local _h_old=""
+  _compute_conf_hash "${TEMP_DIR}" _h_old
+  write_env "${TEMP_DIR}/.env" \
+    "user" "group" "$(id -u)" "$(id -g)" \
+    "x86_64" "hub" "false" \
+    "img" "${TEMP_DIR}" \
+    "tw.archive.ubuntu.com" "mirror.twds.com.tw" "Asia/Taipei" \
+    "host" "host" "true" "all" "gpu" \
+    "false" "${_h_old}"
+  detect_gui() { local -n _o=$1; _o="false"; }
+  detect_gpu() { local -n _o=$1; _o="false"; }
 
-  echo "IMAGE_NAME=my_custom_image" > "${_proj}/.env.example"
-
-  run bash -c "
-    source /source/script/docker/setup.sh
-    detect_ws_path() { local -n _o=\$1; _o='${_ws}'; }
-    main --base-path '${_proj}'
-  "
-  assert_success
-  run grep 'IMAGE_NAME=my_custom_image' "${_proj}/.env"
-  assert_success
-}
-
-@test "main warns when conf has no fallback and detection fails" {
-  # Custom conf without basename rule, no .env.example, no matching prefix/suffix
-  local _ws="${TEMP_DIR}/test_ws"
-  local _proj="${TEMP_DIR}/my_generic_project"
-  mkdir -p "${_ws}" "${_proj}"
-
-  cat > "${_proj}/image_name.conf" <<EOF
-prefix:nonexistent_
+  # Drop in a new per-repo setup.conf → hash differs
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[gpu]
+mode = off
 EOF
 
-  run bash -c "
-    source /source/script/docker/setup.sh
-    detect_ws_path() { local -n _o=\$1; _o='${_ws}'; }
-    main --base-path '${_proj}'
-  "
-  assert_success
-  assert_line --partial "WARNING"
-  run grep 'IMAGE_NAME=unknown' "${_proj}/.env"
-  assert_success
+  run _check_setup_drift "${TEMP_DIR}"
+  assert_output --partial "WARNING"
+  assert_output --partial "setup.conf modified"
 }
 
-@test "main: default conf @default:unknown applies for repo without docker_/_ws naming" {
-  local _ws="${TEMP_DIR}/test_ws"
-  local _proj="${TEMP_DIR}/my_generic_project"
-  mkdir -p "${_ws}" "${_proj}"
+@test "_check_setup_drift warns when GPU detection changes" {
+  local _h=""
+  _compute_conf_hash "${TEMP_DIR}" _h
+  # Store with GPU=false
+  write_env "${TEMP_DIR}/.env" \
+    "user" "group" "$(id -u)" "$(id -g)" \
+    "x86_64" "hub" "false" \
+    "img" "${TEMP_DIR}" \
+    "tw.archive.ubuntu.com" "mirror.twds.com.tw" "Asia/Taipei" \
+    "host" "host" "true" "all" "gpu" \
+    "false" "${_h}"
+  # Now detection says true
+  detect_gui() { local -n _o=$1; _o="false"; }
+  detect_gpu() { local -n _o=$1; _o="true"; }
 
-  run bash -c "
-    source /source/script/docker/setup.sh
-    detect_ws_path() { local -n _o=\$1; _o='${_ws}'; }
-    main --base-path '${_proj}'
-  "
-  assert_success
-  assert_line --partial "INFO"
-  assert_line --partial "@default"
-  run grep 'IMAGE_NAME=unknown' "${_proj}/.env"
-  assert_success
+  run _check_setup_drift "${TEMP_DIR}"
+  assert_output --partial "GPU detection changed"
 }
 
-@test "main uses BASH_SOURCE fallback when --base-path not given" {
-  local _ws="${TEMP_DIR}/test_ws"
-  mkdir -p "${_ws}"
-  detect_ws_path() { local -n _o=$1; _o="${_ws}"; }
-  run main
-  assert_success
-}
-
-@test "default _base_path resolves to repo root, not script dir" {
-  # Regression: setup.sh lives at template/script/docker/setup.sh
-  # Default _base_path must go up 3 levels to repo root
-  local _repo_root="${TEMP_DIR}/docker_myapp"
-  mkdir -p "${_repo_root}/template/script/docker" "${_repo_root}/template/config"
-  cp /source/script/docker/setup.sh "${_repo_root}/template/script/docker/setup.sh"
-  cp /source/script/docker/i18n.sh "${_repo_root}/template/script/docker/i18n.sh"
-  cp /source/config/image_name.conf "${_repo_root}/template/config/image_name.conf"
-
-  # Create a dummy ws for detect_ws_path
-  local _ws="${TEMP_DIR}/myapp_ws"
-  mkdir -p "${_ws}"
-
-  # Run setup.sh directly (no --base-path), simulating user calling it
-  run bash -c "cd '${_repo_root}' && bash template/script/docker/setup.sh"
-  assert_success
-
-  # .env should be at repo root, not in template/script/
-  assert [ -f "${_repo_root}/.env" ]
-  assert [ ! -f "${_repo_root}/template/.env" ]
-
-  # IMAGE_NAME should derive from repo root dir (docker_myapp → myapp)
-  run grep "IMAGE_NAME=myapp" "${_repo_root}/.env"
-  assert_success
-}
+# ════════════════════════════════════════════════════════════════════
+# main --lang + error paths (unchanged behaviour)
+# ════════════════════════════════════════════════════════════════════
 
 @test "main returns error on unknown argument" {
-  run bash -c "source /source/script/docker/setup.sh; main --invalid-arg"
+  run main --bogus
   assert_failure
+  assert_output --partial "Unknown argument"
 }
 
 @test "main returns error when --base-path value is missing" {
-  run bash -c "source /source/script/docker/setup.sh; main --base-path"
-  assert_failure
+  run -127 bash -c "source /source/script/docker/setup.sh; main --base-path"
 }
 
-@test "main sets APT_MIRROR defaults in fresh .env" {
-  local _ws="${TEMP_DIR}/test_ws"
-  mkdir -p "${_ws}"
-  run bash -c "
-    source /source/script/docker/setup.sh
-    detect_ws_path() { local -n _o=\$1; _o='${_ws}'; }
-    main --base-path '${TEMP_DIR}'
-  "
-  assert_success
-  run grep "APT_MIRROR_UBUNTU=tw.archive.ubuntu.com" "${TEMP_DIR}/.env"
-  assert_success
-  run grep "APT_MIRROR_DEBIAN=mirror.twds.com.tw" "${TEMP_DIR}/.env"
-  assert_success
+@test "main returns error when --lang value is missing" {
+  run -127 bash -c "source /source/script/docker/setup.sh; main --lang"
 }
 
-@test "main preserves existing APT_MIRROR values from .env" {
-  local _ws="${TEMP_DIR}/existing_ws"
-  mkdir -p "${_ws}"
-  cat > "${TEMP_DIR}/.env" << EOF
-WS_PATH=${_ws}
-APT_MIRROR_UBUNTU=us.archive.ubuntu.com
-APT_MIRROR_DEBIAN=deb.debian.org
-EOF
+@test "main --lang zh-TW sets Chinese messages for full run" {
+  cp /source/setup.conf "${TEMP_DIR}/setup.conf"
   run bash -c "
     source /source/script/docker/setup.sh
-    main --base-path '${TEMP_DIR}'
+    main --base-path '${TEMP_DIR}' --lang zh-TW 2>&1
   "
   assert_success
-  run grep "APT_MIRROR_UBUNTU=us.archive.ubuntu.com" "${TEMP_DIR}/.env"
+  assert_output --partial "更新完成"
+}
+
+@test "main resolves default _base_path via BASH_SOURCE when --base-path omitted" {
+  # When invoked without --base-path, setup.sh walks 3 levels up from its own
+  # location (script/docker/../../.. = repo root).  We verify the fallback by
+  # copying setup.sh + its i18n.sh sidecar into a sandbox tree.
+  mkdir -p "${TEMP_DIR}/sandbox_repo/template/script/docker"
+  cp /source/script/docker/setup.sh \
+    "${TEMP_DIR}/sandbox_repo/template/script/docker/setup.sh"
+  cp /source/script/docker/i18n.sh \
+    "${TEMP_DIR}/sandbox_repo/template/script/docker/i18n.sh"
+  cp /source/script/docker/_tui_conf.sh \
+    "${TEMP_DIR}/sandbox_repo/template/script/docker/_tui_conf.sh"
+  cp /source/setup.conf "${TEMP_DIR}/sandbox_repo/template/setup.conf"
+
+  run bash "${TEMP_DIR}/sandbox_repo/template/script/docker/setup.sh"
   assert_success
-  run grep "APT_MIRROR_DEBIAN=deb.debian.org" "${TEMP_DIR}/.env"
-  assert_success
+  assert [ -f "${TEMP_DIR}/sandbox_repo/.env" ]
 }
 
 # ════════════════════════════════════════════════════════════════════
-# _msg (i18n)
+# _rule_basename
+# ════════════════════════════════════════════════════════════════════
+
+@test "_rule_basename returns last non-empty path component" {
+  result="$(_rule_basename "/home/user/my_project")"
+  assert_equal "${result}" "my_project"
+}
+
+@test "_rule_basename skips trailing slashes" {
+  result="$(_rule_basename "/home/user/my_project/")"
+  assert_equal "${result}" "my_project"
+}
+
+@test "_rule_basename handles single-component path" {
+  result="$(_rule_basename "justname")"
+  assert_equal "${result}" "justname"
+}
+
+@test "detect_image_name uses @basename rule alone (exercises _rule_basename)" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[image]
+rule_1 = @basename
+EOF
+  unset SETUP_CONF
+  local _result
+  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/home/user/plainname"
+  assert_equal "${_result}" "plainname"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# detect_image_name sanitization
+#
+# docker compose project names + image tags forbid '.' and anything
+# outside [a-z0-9_-]. detect_image_name must normalise whatever the
+# rules produce so downstream `docker compose -p <name>` doesn't
+# reject the generated project name.
+# ════════════════════════════════════════════════════════════════════
+
+@test "detect_image_name replaces '.' with '-' (regression: tmp.abcdef → tmp-abcdef)" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[image]
+rule_1 = @basename
+EOF
+  unset SETUP_CONF
+  local _result
+  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/tmp/tmp.abcdef"
+  assert_equal "${_result}" "tmp-abcdef"
+}
+
+@test "detect_image_name collapses runs of '-' and strips leading/trailing separators" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[image]
+rule_1 = @basename
+EOF
+  unset SETUP_CONF
+  local _result
+  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/tmp/..weird..name.."
+  [[ "${_result}" =~ ^[a-z0-9][a-z0-9_-]*$ ]]
+  assert_equal "${_result}" "weird-name"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# i18n
 # ════════════════════════════════════════════════════════════════════
 
 @test "_msg returns English messages by default" {
   _LANG="en"
-  assert_equal "$(_msg env_done)"     ".env updated"
-  assert_equal "$(_msg env_comment)"  "Auto-detected fields, do not edit manually. Edit WS_PATH if needed"
-  assert_equal "$(_msg unknown_arg)"  "Unknown argument"
+  [[ "$(_msg env_done)" =~ updated ]]
 }
 
-@test "_msg returns Chinese messages when _LANG=zh" {
-  _LANG="zh"
-  assert_equal "$(_msg env_done)"     ".env 更新完成"
-  assert_equal "$(_msg env_comment)"  "自動偵測欄位請勿手動修改，如需變更 WS_PATH 可直接編輯此檔案"
-  assert_equal "$(_msg unknown_arg)"  "未知參數"
+@test "_msg returns Traditional Chinese messages when _LANG=zh-TW" {
+  _LANG="zh-TW"
+  [[ "$(_msg env_done)" =~ 更新完成 ]]
 }
 
 @test "_msg returns Simplified Chinese messages when _LANG=zh-CN" {
   _LANG="zh-CN"
-  assert_equal "$(_msg env_done)"     ".env 更新完成"
-  assert_equal "$(_msg env_comment)"  "自动检测字段请勿手动修改，如需变更 WS_PATH 可直接编辑此文件"
-  assert_equal "$(_msg unknown_arg)"  "未知参数"
+  [[ "$(_msg env_done)" =~ 更新完成 ]]
 }
 
 @test "_msg returns Japanese messages when _LANG=ja" {
   _LANG="ja"
-  assert_equal "$(_msg env_done)"     ".env 更新完了"
-  assert_equal "$(_msg env_comment)"  "自動検出フィールドは手動で編集しないでください。WS_PATH の変更はこのファイルを直接編集してください"
-  assert_equal "$(_msg unknown_arg)"  "不明な引数"
+  [[ "$(_msg env_done)" =~ 更新完了 ]]
+}
+
+# Exercise every (key, language) branch so kcov sees the zh-CN / ja / default
+# `unknown_arg` and `env_comment` case-arms. The env_done-only tests above
+# only land on the first case of each language block.
+
+@test "_msg env_comment and unknown_arg are defined in zh" {
+  _LANG="zh-TW"
+  [[ "$(_msg env_comment)" =~ 自動偵測 ]]
+  [[ "$(_msg unknown_arg)" =~ 未知參數 ]]
+}
+
+@test "_msg env_comment and unknown_arg are defined in zh-CN" {
+  _LANG="zh-CN"
+  [[ "$(_msg env_comment)" =~ 自动检测 ]]
+  [[ "$(_msg unknown_arg)" =~ 未知参数 ]]
+}
+
+@test "_msg env_comment and unknown_arg are defined in ja" {
+  _LANG="ja"
+  [[ "$(_msg env_comment)" =~ 自動検出 ]]
+  [[ "$(_msg unknown_arg)" =~ 不明な引数 ]]
+}
+
+@test "_msg falls back to English when _LANG is unknown" {
+  _LANG="xx"
+  [[ "$(_msg env_done)" =~ updated ]]
+  [[ "$(_msg env_comment)" =~ Auto-detected ]]
+  [[ "$(_msg unknown_arg)" =~ "Unknown argument" ]]
 }
 
 # ════════════════════════════════════════════════════════════════════
-# _detect_lang
+# [build] section (arg_N KEY=VALUE schema)
 # ════════════════════════════════════════════════════════════════════
 
-@test "_detect_lang returns zh for zh_TW.UTF-8" {
-  LANG="zh_TW.UTF-8"
-  assert_equal "$(_detect_lang)" "zh"
-}
-
-@test "_detect_lang returns zh-CN for zh_CN.UTF-8" {
-  LANG="zh_CN.UTF-8"
-  assert_equal "$(_detect_lang)" "zh-CN"
-}
-
-@test "_detect_lang returns ja for ja_JP.UTF-8" {
-  LANG="ja_JP.UTF-8"
-  assert_equal "$(_detect_lang)" "ja"
-}
-
-@test "_detect_lang returns en for en_US.UTF-8" {
-  LANG="en_US.UTF-8"
-  assert_equal "$(_detect_lang)" "en"
-}
-
-@test "_detect_lang returns en when LANG is unset" {
-  unset LANG
-  assert_equal "$(_detect_lang)" "en"
-}
-
-@test "_detect_lang is overridden by SETUP_LANG" {
-  LANG="ja_JP.UTF-8"
-  SETUP_LANG="zh"
-  # Re-evaluate _LANG as setup.sh would
-  _LANG="${SETUP_LANG:-$(_detect_lang)}"
-  assert_equal "${_LANG}" "zh"
-}
-
-# ════════════════════════════════════════════════════════════════════
-# main --lang
-# ════════════════════════════════════════════════════════════════════
-
-@test "main --lang zh sets Chinese messages" {
-  local _ws="${TEMP_DIR}/test_ws"
-  mkdir -p "${_ws}"
+@test "[build] template defaults ship TW mirrors via arg_N" {
+  cp /source/setup.conf "${TEMP_DIR}/setup.conf"
   run bash -c "
     source /source/script/docker/setup.sh
-    detect_ws_path() { local -n _o=\$1; _o='${_ws}'; }
-    main --base-path '${TEMP_DIR}' --lang zh
+    main --base-path '${TEMP_DIR}' 2>&1
+    grep '^APT_MIRROR_UBUNTU=' '${TEMP_DIR}/.env'
+    grep '^APT_MIRROR_DEBIAN=' '${TEMP_DIR}/.env'
   "
   assert_success
-  assert_output --partial ".env 更新完成"
+  assert_output --partial "APT_MIRROR_UBUNTU=tw.archive.ubuntu.com"
+  assert_output --partial "APT_MIRROR_DEBIAN=mirror.twds.com.tw"
 }
 
-@test "main --lang requires a value" {
-  run bash -c "source /source/script/docker/setup.sh; main --lang"
+@test "[build] arg_N override replaces TW default when set" {
+  cp /source/setup.conf "${TEMP_DIR}/setup.conf"
+  _upsert_conf_value "${TEMP_DIR}/setup.conf" build arg_1 \
+    "APT_MIRROR_UBUNTU=archive.ubuntu.com"
+  _upsert_conf_value "${TEMP_DIR}/setup.conf" build arg_2 \
+    "APT_MIRROR_DEBIAN=deb.debian.org"
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${TEMP_DIR}' 2>&1
+    grep '^APT_MIRROR_UBUNTU=' '${TEMP_DIR}/.env'
+    grep '^APT_MIRROR_DEBIAN=' '${TEMP_DIR}/.env'
+  "
+  assert_success
+  assert_output --partial "APT_MIRROR_UBUNTU=archive.ubuntu.com"
+  assert_output --partial "APT_MIRROR_DEBIAN=deb.debian.org"
+}
+
+@test "[build] back-compat: old apt_mirror_* named keys still read" {
+  # Legacy repo setup.conf with the pre-arg_N schema must keep working
+  # so users can upgrade template without rewriting setup.conf first.
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[build]
+apt_mirror_ubuntu = mirror.example.com
+tz = Asia/Tokyo
+EOF
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${TEMP_DIR}' 2>&1
+    grep '^APT_MIRROR_UBUNTU=' '${TEMP_DIR}/.env'
+    grep '^TZ=' '${TEMP_DIR}/.env'
+  "
+  assert_success
+  assert_output --partial "APT_MIRROR_UBUNTU=mirror.example.com"
+  assert_output --partial "TZ=Asia/Tokyo"
+}
+
+@test "[build] user-added arg_N propagates to .env" {
+  # Dockerfile with `ARG PYTHON_VERSION` can pick up a user-added
+  # build arg. Extra args land in .env so compose build.args can
+  # reference them.
+  cp /source/setup.conf "${TEMP_DIR}/setup.conf"
+  _upsert_conf_value "${TEMP_DIR}/setup.conf" build arg_9 \
+    "PYTHON_VERSION=3.12"
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${TEMP_DIR}' 2>&1
+    grep '^PYTHON_VERSION=' '${TEMP_DIR}/.env'
+  "
+  assert_success
+  assert_output --partial "PYTHON_VERSION=3.12"
+}
+
+@test "[build] target_arch = arm64 writes TARGET_ARCH to .env" {
+  cp /source/setup.conf "${TEMP_DIR}/setup.conf"
+  _upsert_conf_value "${TEMP_DIR}/setup.conf" build target_arch arm64
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${TEMP_DIR}' >/dev/null 2>&1
+    grep '^TARGET_ARCH=' '${TEMP_DIR}/.env'
+  "
+  assert_success
+  assert_output --partial "TARGET_ARCH=arm64"
+}
+
+@test "[build] target_arch empty omits TARGET_ARCH from .env" {
+  cp /source/setup.conf "${TEMP_DIR}/setup.conf"
+  # Explicit empty value (the template's default)
+  _upsert_conf_value "${TEMP_DIR}/setup.conf" build target_arch ""
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${TEMP_DIR}' >/dev/null 2>&1
+    grep -c '^TARGET_ARCH=' '${TEMP_DIR}/.env'
+  "
+  # grep -c prints "0" and exits 1 when pattern missing; we want exactly that.
   assert_failure
+  assert_output "0"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _get_conf_list_sorted skips empty values
+# ════════════════════════════════════════════════════════════════════
+
+@test "_get_conf_list_sorted skips entries with empty value" {
+  local -a _k=("mount_1" "mount_2" "mount_3") _v=("" "/b:/b" "")
+  local -a _out=()
+  _get_conf_list_sorted _k _v "mount_" _out
+  assert_equal "${#_out[@]}" "1"
+  assert_equal "${_out[0]}" "/b:/b"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Workspace writeback (first-time / user edit / opt-out)
+# ════════════════════════════════════════════════════════════════════
+
+@test "workspace first-time: creates <repo>/setup.conf + writes mount_1" {
+  local _repo="${TEMP_DIR}/repo"
+  mkdir -p "${_repo}"
+  # Fresh: no setup.conf in repo
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${_repo}' 2>&1
+  "
+  assert_success
+  assert [ -f "${_repo}/setup.conf" ]
+  run grep '^mount_1' "${_repo}/setup.conf"
+  [[ "${output}" == *"/home/\${USER_NAME}/work"* ]]
+}
+
+@test "workspace second-run: respects user-edited mount_1" {
+  local _repo="${TEMP_DIR}/repo"
+  mkdir -p "${_repo}"
+  # First run creates setup.conf with detected mount_1
+  bash -c "source /source/script/docker/setup.sh; main --base-path '${_repo}'" \
+    >/dev/null 2>&1
+  # User edits mount_1 to a custom path
+  sed -i 's|^mount_1.*|mount_1 = /custom/ws:/home/${USER_NAME}/work|' \
+    "${_repo}/setup.conf"
+  # Second run should read the user value, not re-detect
+  run bash -c "
+    source /source/script/docker/setup.sh
+    main --base-path '${_repo}' 2>&1
+    grep '^WS_PATH=' '${_repo}/.env'
+    grep '^mount_1' '${_repo}/setup.conf'
+  "
+  assert_success
+  assert_output --partial "WS_PATH=/custom/ws"
+  assert_output --partial "mount_1 = /custom/ws:"
+}
+
+@test "workspace opt-out: cleared mount_1 means no workspace mount in compose" {
+  local _repo="${TEMP_DIR}/repo"
+  mkdir -p "${_repo}"
+  bash -c "source /source/script/docker/setup.sh; main --base-path '${_repo}'" \
+    >/dev/null 2>&1
+  # User clears mount_1 (opt-out)
+  sed -i 's|^mount_1.*|mount_1 =|' "${_repo}/setup.conf"
+  bash -c "source /source/script/docker/setup.sh; main --base-path '${_repo}'" \
+    >/dev/null 2>&1
+  # mount_1 stays empty (not re-populated)
+  run grep '^mount_1' "${_repo}/setup.conf"
+  assert_equal "${output}" "mount_1 ="
+  # compose.yaml has no workspace mount
+  run grep ':/home/${USER_NAME}/work' "${_repo}/compose.yaml"
+  assert_failure
+}
+
+# ════════════════════════════════════════════════════════════════════
+# detect_image_name string rule
+# ════════════════════════════════════════════════════════════════════
+
+@test "detect_image_name string:<value> short-circuits path parsing" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[image]
+rule_1 = string:my_app
+rule_2 = prefix:docker_
+rule_3 = @default:should_not_reach
+EOF
+  unset SETUP_CONF
+  local _result
+  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/home/user/docker_something"
+  assert_equal "${_result}" "my_app"
+}
+
+@test "detect_image_name string value is still lowercased + sanitized" {
+  cat > "${TEMP_DIR}/setup.conf" <<'EOF'
+[image]
+rule_1 = string:My.App.Name
+EOF
+  unset SETUP_CONF
+  local _result
+  BASE_PATH="${TEMP_DIR}" detect_image_name _result "/tmp/whatever"
+  assert_equal "${_result}" "my-app-name"
 }

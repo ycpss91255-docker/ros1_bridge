@@ -12,7 +12,7 @@ else
   # Fallback for /lint stage. See build.sh for rationale.
   _detect_lang() {
     case "${LANG:-}" in
-      zh_TW*) echo "zh" ;;
+      zh_TW*) echo "zh-TW" ;;
       zh_CN*|zh_SG*) echo "zh-CN" ;;
       ja*) echo "ja" ;;
       *) echo "en" ;;
@@ -23,14 +23,15 @@ fi
 
 usage() {
   case "${_LANG}" in
-    zh)
+    zh-TW)
       cat >&2 <<'EOF'
-用法: ./run.sh [-h] [-d|--detach] [--no-env] [--dry-run] [--instance NAME] [--lang <en|zh|zh-CN|ja>] [TARGET]
+用法: ./run.sh [-h] [-d|--detach] [-s|--setup] [--dry-run] [--instance NAME] [--lang <en|zh-TW|zh-CN|ja>] [TARGET]
 
 選項:
   -h, --help        顯示此說明
   -d, --detach      背景執行（docker compose up -d）
-  --no-env          跳過 .env 重新產生
+  -s, --setup       強制重跑 setup.sh 重新生成 .env + compose.yaml
+                    （預設：.env 不存在時自動 bootstrap；存在時僅印 drift warning）
   --dry-run         只印出將執行的 docker 指令，不實際執行
   --instance NAME   啟動命名 instance（與預設並行,suffix=-NAME）
   --lang LANG       設定訊息語言（預設: en）
@@ -42,12 +43,13 @@ EOF
       ;;
     zh-CN)
       cat >&2 <<'EOF'
-用法: ./run.sh [-h] [-d|--detach] [--no-env] [--dry-run] [--instance NAME] [--lang <en|zh|zh-CN|ja>] [TARGET]
+用法: ./run.sh [-h] [-d|--detach] [-s|--setup] [--dry-run] [--instance NAME] [--lang <en|zh-TW|zh-CN|ja>] [TARGET]
 
 选项:
   -h, --help        显示此说明
   -d, --detach      后台运行（docker compose up -d）
-  --no-env          跳过 .env 重新生成
+  -s, --setup       强制重跑 setup.sh 重新生成 .env + compose.yaml
+                    （默认：.env 不存在时自动 bootstrap；存在时仅打印 drift warning）
   --dry-run         只打印将执行的 docker 命令，不实际执行
   --instance NAME   启动命名 instance（与默认并行,suffix=-NAME）
   --lang LANG       设置消息语言（默认: en）
@@ -59,12 +61,13 @@ EOF
       ;;
     ja)
       cat >&2 <<'EOF'
-使用法: ./run.sh [-h] [-d|--detach] [--no-env] [--dry-run] [--instance NAME] [--lang <en|zh|zh-CN|ja>] [TARGET]
+使用法: ./run.sh [-h] [-d|--detach] [-s|--setup] [--dry-run] [--instance NAME] [--lang <en|zh-TW|zh-CN|ja>] [TARGET]
 
 オプション:
   -h, --help        このヘルプを表示
   -d, --detach      バックグラウンドで実行（docker compose up -d）
-  --no-env          .env の再生成をスキップ
+  -s, --setup       setup.sh を強制実行して .env + compose.yaml を再生成
+                    （デフォルト：.env が無ければ自動 bootstrap、あれば drift warning のみ）
   --dry-run         実行される docker コマンドを表示するのみ（実行はしない）
   --instance NAME   名前付き instance を起動（デフォルトと並行、suffix=-NAME）
   --lang LANG       メッセージ言語を設定（デフォルト: en）
@@ -76,12 +79,13 @@ EOF
       ;;
     *)
       cat >&2 <<'EOF'
-Usage: ./run.sh [-h] [-d|--detach] [--no-env] [--dry-run] [--instance NAME] [--lang <en|zh|zh-CN|ja>] [TARGET]
+Usage: ./run.sh [-h] [-d|--detach] [-s|--setup] [--dry-run] [--instance NAME] [--lang <en|zh-TW|zh-CN|ja>] [TARGET]
 
 Options:
   -h, --help        Show this help
   -d, --detach      Run in background (docker compose up -d)
-  --no-env          Skip .env regeneration
+  -s, --setup       Force rerun setup.sh to regenerate .env + compose.yaml
+                    (default: auto-bootstrap if .env missing; warn on drift if present)
   --dry-run         Print the docker commands that would run, but do not execute
   --instance NAME   Start a named parallel instance (suffix=-NAME)
   --lang LANG       Set message language (default: en)
@@ -106,7 +110,7 @@ _devel_cleanup() {
 }
 
 main() {
-  local SKIP_ENV=false
+  local RUN_SETUP=false
   local DETACH=false
   local TARGET="devel"
   local INSTANCE=""
@@ -121,8 +125,8 @@ main() {
         DETACH=true
         shift
         ;;
-      --no-env)
-        SKIP_ENV=true
+      -s|--setup)
+        RUN_SETUP=true
         shift
         ;;
       --dry-run)
@@ -134,7 +138,8 @@ main() {
         shift 2
         ;;
       --lang)
-        _LANG="${2:?"--lang requires a value (en|zh|zh-CN|ja)"}"
+        _LANG="${2:?"--lang requires a value (en|zh-TW|zh-CN|ja)"}"
+        _sanitize_lang _LANG "run"
         shift 2
         ;;
       *)
@@ -145,15 +150,45 @@ main() {
   done
   export DRY_RUN
 
-  # Generate / refresh .env
-  if [[ "${SKIP_ENV}" == false ]]; then
-    "${FILE_PATH}/template/script/docker/setup.sh" \
-      --base-path "${FILE_PATH}" --lang "${_LANG}"
+  local _setup="${FILE_PATH}/template/script/docker/setup.sh"
+  local _tui="${FILE_PATH}/setup_tui.sh"
+
+  # _run_interactive: prefer setup_tui.sh when an interactive TTY is
+  # present and the symlink is executable; otherwise fall back to
+  # non-interactive setup.sh. Keeps CI / non-TTY paths unchanged.
+  _run_interactive() {
+    if [[ -t 0 && -t 1 && -x "${_tui}" ]]; then
+      "${_tui}" --lang "${_LANG}"
+    else
+      "${_setup}" --base-path "${FILE_PATH}" --lang "${_LANG}"
+    fi
+  }
+
+  # Decide whether to run setup.sh / setup_tui.sh:
+  #   - --setup flag          → always run interactive-or-setup
+  #   - missing .env          → auto-bootstrap (first-time / fresh CI clone)
+  #   - otherwise             → check for drift and warn (but continue)
+  if [[ "${RUN_SETUP}" == true ]]; then
+    _run_interactive
+  elif [[ ! -f "${FILE_PATH}/.env" ]] || [[ ! -f "${FILE_PATH}/setup.conf" ]]; then
+    # Missing .env OR setup.conf → bootstrap. Covers fresh clones and
+    # the "I rm'd setup.conf to reset to defaults" reset workflow.
+    printf "[run] INFO: First run — bootstrapping...\n"
+    _run_interactive
+  else
+    # shellcheck disable=SC1090
+    source "${_setup}"
+    _check_setup_drift "${FILE_PATH}" || true
   fi
 
   # Load .env, derive PROJECT_NAME (sets/exports INSTANCE_SUFFIX too).
   _load_env "${FILE_PATH}/.env"
   _compute_project_name "${INSTANCE}"
+
+  # Pre-run snapshot so the user can see which files + values this
+  # invocation resolved to before the container replaces the shell.
+  # Mute with QUIET=1 for piped / CI logs.
+  [[ "${QUIET:-0}" != "1" ]] && _print_config_summary run
 
   # Allow X11 forwarding (X11 or XWayland)
   if [[ "${XDG_SESSION_TYPE:-x11}" == "wayland" ]]; then

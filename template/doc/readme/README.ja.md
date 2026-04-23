@@ -30,9 +30,12 @@
 ## TL;DR
 
 ```bash
-# 新規 repo：subtree 追加 + 初期化
+# ゼロからの新規 repo：init + 初回コミット + subtree + init.sh
+mkdir <repo_name> && cd <repo_name>
+git init
+git commit --allow-empty -m "chore: initial commit"
 git subtree add --prefix=template \
-    git@github.com:ycpss91255-docker/template.git main --squash
+    https://github.com/ycpss91255-docker/template.git main --squash
 ./template/init.sh
 
 # 最新版にアップグレード
@@ -107,14 +110,18 @@ flowchart LR
 
 | ファイル | 説明 |
 |----------|------|
-| `build.sh` | コンテナビルド（`script/docker/setup.sh` を呼び出して `.env` を生成） |
-| `run.sh` | コンテナ実行（X11/Wayland 対応） |
+| `build.sh` | コンテナビルド（`--setup` は TTY がある場合 `setup_tui.sh` を起動、無ければ `setup.sh` を実行） |
+| `run.sh` | コンテナ実行（X11/Wayland 対応；`--setup` の意味は `build.sh` と同じ） |
 | `exec.sh` | 実行中のコンテナに入る |
 | `stop.sh` | コンテナの停止・削除 |
-| `script/docker/setup.sh` | システムパラメータの自動検出と `.env` 生成 |
+| `setup_tui.sh` | インタラクティブな setup.conf エディタ（dialog / whiptail フロントエンド） |
+| `script/docker/setup.sh` | システムパラメータの自動検出と `.env` + `compose.yaml` 生成 |
+| `script/docker/_tui_backend.sh` | `setup_tui.sh` が使用する dialog / whiptail ラッパ関数 |
+| `script/docker/_tui_conf.sh` | INI バリデータ + 読み書き（`setup_tui.sh` と `setup.sh` の書き戻し用） |
 | `script/docker/_lib.sh` | 共有 helper（`_load_env`、`_compose`、`_compose_project` など） |
 | `script/docker/i18n.sh` | 共有言語検出（`_detect_lang`、`_LANG`） |
-| `config/` | シェル設定ファイル（bashrc、tmux、terminator、pip）+ IMAGE_NAME ルール |
+| `config/` | コンテナ内部のシェル設定ファイル（bashrc、tmux、terminator、pip） |
+| `setup.conf` | 単一の repo ランタイム設定（image / build / deploy / gui / network / volumes） |
 | `test/smoke/` | 共有 smoke テスト + runtime assertion helpers（下記参照） |
 | `test/unit/` | Template 自身のテスト（bats + kcov） |
 | `test/integration/` | Level-1 `init.sh` 統合テスト |
@@ -181,18 +188,103 @@ assertion helpers のセットを提供します。ダウンストリーム repo
 - `doc/` と `README.md`
 - Repo 固有の smoke test
 
+## repo ごとのランタイム設定
+
+各下流 repo は 1 つの `setup.conf` INI ファイルで自身のランタイム設定
+（GPU 予約 / GUI env/volumes / network mode / 追加 volume mounts）を
+駆動します。`setup.sh` がこれ + システム検出結果を読み、`.env` と
+`compose.yaml` を再生成します — この 2 つの生成物をユーザが手動編集
+する必要はありません。
+
+### 単一 conf、6 つの section
+
+```
+[image]    rules = prefix:docker_, suffix:_ws, @default:unknown
+[build]    apt_mirror_ubuntu、apt_mirror_debian            # Dockerfile build args
+[deploy]   gpu_mode (auto|force|off)、gpu_count、gpu_capabilities
+[gui]      mode (auto|force|off)
+[network]  mode (host|bridge|none)、ipc、privileged
+[volumes]  mount_1（workspace、初回 setup.sh 実行時に自動記入）
+           mount_2..mount_N（ユーザ定義の追加 host mount；/dev デバイスは path 指定）
+```
+
+テンプレート既定値は `template/setup.conf`；repo ごとの上書きは
+`<repo>/setup.conf`。セクションレベル **replace** 戦略：repo ファイルに
+section があれば template の section を全置換；無ければ template 既定値を継承。
+
+初回の `setup.sh` 実行時（repo 側の setup.conf がまだ無い状態）、
+template ファイルが repo にコピーされ、検出された workspace が
+`[volumes] mount_1` に書き込まれます。以降の実行は `mount_1` を
+真のソースとして扱います — 空にすれば workspace マウントを
+オプトアウトできます。編集方法：
+
+```bash
+./setup_tui.sh                      # インタラクティブな dialog/whiptail エディタ
+./setup_tui.sh volumes              # 特定 section に直接ジャンプ
+./build.sh --setup            # TTY 下では setup_tui.sh を起動、それ以外は setup.sh を実行
+./template/init.sh --gen-conf # template/setup.conf を repo ルートに単純コピー
+```
+
+### インタラクティブ TUI
+
+`./setup_tui.sh` はメインメニューを開き、6 つの section すべての値を
+編集できます。バックエンドは `dialog` または `whiptail`（どちらも
+無い場合は `sudo apt install dialog` のヒントを表示して終了）。
+Cancel / Esc で保存せず退出；保存後は自動的に `setup.sh` を呼び
+出して `.env` + `compose.yaml` を再生成します。
+
+### setup.sh の実行タイミング
+
+`setup.sh` は明示的にトリガーされた時のみ実行されます — build / run
+の度に再実行されることはありません：
+
+- **`./template/init.sh`** がスケルトン生成後に 1 回自動実行
+- **`./build.sh --setup` / `./run.sh --setup`**（または `-s`）— ユーザが
+  明示的に再実行。TTY がある場合は先に `setup_tui.sh` を起動して `setup.conf`
+  を編集させ、TTY が無い場合は直接 `setup.sh` を呼び出します
+- **初回 bootstrap**：`./build.sh` / `./run.sh` は `.env` が無い初回実行
+  （CI の新規 clone 等）では、同じ TTY-aware フローを自動で通ります。
+  `--setup` 指定は不要
+
+### ドリフト検出
+
+`setup.sh` は `.env` に `SETUP_CONF_HASH` / `SETUP_GUI_DETECTED` /
+`SETUP_TIMESTAMP` を書き込みます。`./build.sh` / `./run.sh` は毎回
+エントリ時点で現行の `setup.conf` ハッシュ + システム検出値と比較し、
+以下のいずれかが変化した場合に `[WARNING]` を出力（実行は継続）：
+
+- `setup.conf` の内容（conf hash）
+- GPU / GUI の検出結果
+- `USER_UID`（ユーザ ID の変化）
+
+`--setup` を付けて再実行すれば `.env` + `compose.yaml` を再生成できます。
+
+### 生成物（gitignored）
+
+- `.env` — ランタイム変数 + `SETUP_*` drift metadata
+- `compose.yaml` — baseline + 条件ブロック込みの完全な compose
+
+いつでも `compose.yaml` を開けば現在の完全なランタイム設定を確認できます。
+
 ## クイックスタート
 
 ### 新規 repo への追加
 
 ```bash
-# 1. subtree 追加
-git subtree add --prefix=template \
-    git@github.com:ycpss91255-docker/template.git main --squash
+# 1. 空の repo を初期化（既存の repo でコミットが 1 つ以上ある場合はスキップ）
+mkdir <repo_name> && cd <repo_name>
+git init
+git commit --allow-empty -m "chore: initial commit"
 
-# 2. symlink 初期化（ワンコマンド）
+# 2. subtree 追加
+git subtree add --prefix=template \
+    https://github.com/ycpss91255-docker/template.git main --squash
+
+# 3. symlink 初期化（ワンコマンド）
 ./template/init.sh
 ```
+
+> `git subtree add` は `HEAD` の存在を前提とします。`git init` 直後でコミットが無い repo では `ambiguous argument 'HEAD'` と `working tree has modifications` で失敗します。空コミットで `HEAD` を作成しておけば subtree がマージできます。
 
 ### アップグレード
 
@@ -279,7 +371,10 @@ template/
 │   │   ├── run.sh
 │   │   ├── exec.sh
 │   │   ├── stop.sh
-│   │   ├── setup.sh                  # .env ジェネレータ
+│   │   ├── setup_tui.sh                    # インタラクティブな setup.conf エディタ（dialog/whiptail）
+│   │   ├── setup.sh                  # .env + compose.yaml ジェネレータ
+│   │   ├── _tui_backend.sh           # dialog / whiptail ラッパ関数
+│   │   ├── _tui_conf.sh              # INI バリデータ + 読み書き
 │   │   ├── _lib.sh                   # 共有 helper（_load_env、_compose、_compose_project）
 │   │   ├── i18n.sh                   # 共有言語検出（_detect_lang、_LANG）
 │   │   └── Makefile
@@ -288,7 +383,8 @@ template/
 ├── dockerfile/
 │   ├── Dockerfile.test-tools         # プリビルド lint/test ツール image
 │   └── Dockerfile.example            # 新 repo の Dockerfile テンプレート（sys → base → devel → test → [runtime]）
-├── config/                           # シェル/ツール設定 + IMAGE_NAME ルール
+├── setup.conf                        # 単一ランタイム設定（repo 上書き: <repo>/setup.conf）
+├── config/                           # コンテナ内部のシェル / ツール設定
 │   ├── image_name.conf               # デフォルト IMAGE_NAME 検出ルール
 │   ├── pip/
 │   │   ├── setup.sh

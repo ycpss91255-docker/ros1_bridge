@@ -14,7 +14,7 @@ else
   # are unused in this stage.
   _detect_lang() {
     case "${LANG:-}" in
-      zh_TW*) echo "zh" ;;
+      zh_TW*) echo "zh-TW" ;;
       zh_CN*|zh_SG*) echo "zh-CN" ;;
       ja*) echo "ja" ;;
       *) echo "en" ;;
@@ -25,13 +25,14 @@ fi
 
 usage() {
   case "${_LANG}" in
-    zh)
+    zh-TW)
       cat >&2 <<'EOF'
-用法: ./build.sh [-h] [--no-env] [--no-cache] [--clean-tools] [--dry-run] [--lang <en|zh|zh-CN|ja>] [TARGET]
+用法: ./build.sh [-h] [-s|--setup] [--no-cache] [--clean-tools] [--dry-run] [--lang <en|zh-TW|zh-CN|ja>] [TARGET]
 
 選項:
   -h, --help     顯示此說明
-  --no-env       跳過 .env 重新產生
+  -s, --setup    強制重跑 setup.sh 重新生成 .env + compose.yaml
+                 （預設：.env 不存在時自動 bootstrap；存在時僅印 drift warning）
   --no-cache     強制不使用 cache 重建
   --clean-tools  build 結束後移除 test-tools:local image（預設保留以加速下次 build）
   --dry-run      只印出將執行的 docker 指令，不實際執行
@@ -45,11 +46,12 @@ EOF
       ;;
     zh-CN)
       cat >&2 <<'EOF'
-用法: ./build.sh [-h] [--no-env] [--no-cache] [--clean-tools] [--dry-run] [--lang <en|zh|zh-CN|ja>] [TARGET]
+用法: ./build.sh [-h] [-s|--setup] [--no-cache] [--clean-tools] [--dry-run] [--lang <en|zh-TW|zh-CN|ja>] [TARGET]
 
 选项:
   -h, --help     显示此说明
-  --no-env       跳过 .env 重新生成
+  -s, --setup    强制重跑 setup.sh 重新生成 .env + compose.yaml
+                 （默认：.env 不存在时自动 bootstrap；存在时仅打印 drift warning）
   --no-cache     强制不使用 cache 重建
   --clean-tools  build 结束后移除 test-tools:local image（默认保留以加速下次 build）
   --dry-run      只打印将执行的 docker 命令，不实际执行
@@ -63,11 +65,12 @@ EOF
       ;;
     ja)
       cat >&2 <<'EOF'
-使用法: ./build.sh [-h] [--no-env] [--no-cache] [--clean-tools] [--dry-run] [--lang <en|zh|zh-CN|ja>] [TARGET]
+使用法: ./build.sh [-h] [-s|--setup] [--no-cache] [--clean-tools] [--dry-run] [--lang <en|zh-TW|zh-CN|ja>] [TARGET]
 
 オプション:
   -h, --help     このヘルプを表示
-  --no-env       .env の再生成をスキップ
+  -s, --setup    setup.sh を強制実行して .env + compose.yaml を再生成
+                 （デフォルト：.env が無ければ自動 bootstrap、あれば drift warning のみ）
   --no-cache     キャッシュを使わず強制リビルド
   --clean-tools  build 終了後に test-tools:local image を削除（デフォルトは保持）
   --dry-run      実行される docker コマンドを表示するのみ（実行はしない）
@@ -81,11 +84,12 @@ EOF
       ;;
     *)
       cat >&2 <<'EOF'
-Usage: ./build.sh [-h] [--no-env] [--no-cache] [--clean-tools] [--dry-run] [--lang <en|zh|zh-CN|ja>] [TARGET]
+Usage: ./build.sh [-h] [-s|--setup] [--no-cache] [--clean-tools] [--dry-run] [--lang <en|zh-TW|zh-CN|ja>] [TARGET]
 
 Options:
   -h, --help     Show this help
-  --no-env       Skip .env regeneration
+  -s, --setup    Force rerun setup.sh to regenerate .env + compose.yaml
+                 (default: auto-bootstrap if .env missing; warn on drift if present)
   --no-cache     Force rebuild without cache
   --clean-tools  Remove test-tools:local image after build (default: keep for faster next build)
   --dry-run      Print the docker commands that would run, but do not execute
@@ -102,7 +106,7 @@ EOF
 }
 
 main() {
-  local SKIP_ENV=false
+  local RUN_SETUP=false
   local NO_CACHE=false
   local CLEAN_TOOLS=false
   local TARGET="devel"
@@ -113,8 +117,8 @@ main() {
       -h|--help)
         usage
         ;;
-      --no-env)
-        SKIP_ENV=true
+      -s|--setup)
+        RUN_SETUP=true
         shift
         ;;
       --no-cache)
@@ -130,7 +134,8 @@ main() {
         shift
         ;;
       --lang)
-        _LANG="${2:?"--lang requires a value (en|zh|zh-CN|ja)"}"
+        _LANG="${2:?"--lang requires a value (en|zh-TW|zh-CN|ja)"}"
+        _sanitize_lang _LANG "build"
         shift 2
         ;;
       *)
@@ -141,20 +146,56 @@ main() {
   done
   export DRY_RUN
 
-  # Generate / refresh .env
-  if [[ "${SKIP_ENV}" == false ]]; then
-    "${FILE_PATH}/template/script/docker/setup.sh" \
-      --base-path "${FILE_PATH}" --lang "${_LANG}"
+  local _setup="${FILE_PATH}/template/script/docker/setup.sh"
+  local _tui="${FILE_PATH}/setup_tui.sh"
+
+  # _run_interactive: prefer setup_tui.sh when an interactive TTY is
+  # present and the symlink is executable; otherwise fall back to
+  # non-interactive setup.sh. Keeps CI / non-TTY paths unchanged.
+  _run_interactive() {
+    if [[ -t 0 && -t 1 && -x "${_tui}" ]]; then
+      "${_tui}" --lang "${_LANG}"
+    else
+      "${_setup}" --base-path "${FILE_PATH}" --lang "${_LANG}"
+    fi
+  }
+
+  # Decide whether to run setup.sh / setup_tui.sh:
+  #   - --setup flag          → always run interactive-or-setup
+  #   - missing .env          → auto-bootstrap (first-time / fresh CI clone)
+  #   - otherwise             → check for drift and warn (but continue)
+  if [[ "${RUN_SETUP}" == true ]]; then
+    _run_interactive
+  elif [[ ! -f "${FILE_PATH}/.env" ]] || [[ ! -f "${FILE_PATH}/setup.conf" ]]; then
+    # Missing .env OR setup.conf → bootstrap. Covers fresh clones and
+    # the "I rm'd setup.conf to reset to defaults" reset workflow.
+    printf "[build] INFO: First run — bootstrapping...\n"
+    _run_interactive
+  else
+    # shellcheck disable=SC1090
+    source "${_setup}"
+    _check_setup_drift "${FILE_PATH}" || true
   fi
 
   # Load .env for project name
   _load_env "${FILE_PATH}/.env"
   _compute_project_name ""
 
+  # Pre-build snapshot so first-time users see which files drove this
+  # run and the effective image/network/GPU/GUI/TZ before docker takes
+  # over the terminal. --dry-run keeps it (still useful); can be muted
+  # with QUIET=1 if someone pipes this into their own CI log.
+  [[ "${QUIET:-0}" != "1" ]] && _print_config_summary build
+
   # Build test-tools image if Dockerfile exists
   local _tools_dockerfile="${FILE_PATH}/template/dockerfile/Dockerfile.test-tools"
   local _tools_args=()
   [[ "${NO_CACHE}" == true ]] && _tools_args+=(--no-cache)
+  # Forward user's TARGETARCH override when set. Empty = leave unset so
+  # BuildKit auto-fills from host/--platform (no --build-arg passed).
+  if [[ -n "${TARGET_ARCH:-}" ]]; then
+    _tools_args+=(--build-arg "TARGETARCH=${TARGET_ARCH}")
+  fi
   if [[ -f "${_tools_dockerfile}" ]]; then
     if [[ "${DRY_RUN}" == true ]]; then
       printf '[dry-run] docker build'

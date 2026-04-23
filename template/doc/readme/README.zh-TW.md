@@ -30,9 +30,12 @@
 ## TL;DR
 
 ```bash
-# 新 repo：加入 subtree + 初始化
+# 從零開始的新 repo：init + 首個 commit + subtree + init.sh
+mkdir <repo_name> && cd <repo_name>
+git init
+git commit --allow-empty -m "chore: initial commit"
 git subtree add --prefix=template \
-    git@github.com:ycpss91255-docker/template.git main --squash
+    https://github.com/ycpss91255-docker/template.git main --squash
 ./template/init.sh
 
 # 升級到最新版
@@ -107,14 +110,18 @@ flowchart LR
 
 | 檔案 | 說明 |
 |------|------|
-| `build.sh` | 建置容器（呼叫 `script/docker/setup.sh` 產生 `.env`） |
-| `run.sh` | 執行容器（支援 X11/Wayland） |
+| `build.sh` | 建置容器（`--setup` 有 TTY 時啟動 `setup_tui.sh`，否則呼叫 `setup.sh`） |
+| `run.sh` | 執行容器（支援 X11/Wayland；`--setup` 語意與 `build.sh` 相同） |
 | `exec.sh` | 進入執行中的容器 |
 | `stop.sh` | 停止並移除容器 |
-| `script/docker/setup.sh` | 自動偵測系統參數並產生 `.env` |
+| `setup_tui.sh` | 互動式 setup.conf 編輯器（dialog / whiptail 前端） |
+| `script/docker/setup.sh` | 自動偵測系統參數並產生 `.env` + `compose.yaml` |
+| `script/docker/_tui_backend.sh` | `setup_tui.sh` 使用的 dialog / whiptail 包裝函式 |
+| `script/docker/_tui_conf.sh` | INI validator + 讀寫邏輯（供 `setup_tui.sh` 及 `setup.sh` 回寫使用） |
 | `script/docker/_lib.sh` | 共用 helper（`_load_env`、`_compose`、`_compose_project` 等） |
 | `script/docker/i18n.sh` | 共用語言偵測（`_detect_lang`、`_LANG`） |
-| `config/` | Shell 設定檔（bashrc、tmux、terminator、pip）+ IMAGE_NAME 規則 |
+| `config/` | Container 內部 shell 設定檔（bashrc、tmux、terminator、pip） |
+| `setup.conf` | 單一 per-repo runtime 配置（image / build / deploy / gui / network / volumes） |
 | `test/smoke/` | 共用 smoke 測試 + runtime assertion helpers（見下方） |
 | `test/unit/` | Template 自身測試（bats + kcov） |
 | `test/integration/` | Level-1 `init.sh` 整合測試 |
@@ -178,18 +185,95 @@ assertion helpers。下游 repo 應優先使用這些 helper 而非原生的
 - `doc/` 和 `README.md`
 - Repo 專屬的 smoke test
 
+## 各 repo runtime 配置
+
+每個下游 repo 透過一個 `setup.conf` INI 檔驅動自己的 runtime 配置
+（GPU 保留、GUI env/volumes、network mode、額外 volume mounts）。
+`setup.sh` 讀它 + 系統偵測後重新產生 `.env` 跟 `compose.yaml`，這
+兩個衍生檔使用者不用動手編輯。
+
+### 單一 conf、6 個 section
+
+```
+[image]    rules = prefix:docker_, suffix:_ws, @default:unknown
+[build]    apt_mirror_ubuntu、apt_mirror_debian            # Dockerfile build args
+[deploy]   gpu_mode (auto|force|off)、gpu_count、gpu_capabilities
+[gui]      mode (auto|force|off)
+[network]  mode (host|bridge|none)、ipc、privileged
+[volumes]  mount_1（workspace，首次 setup.sh 執行時自動填入）
+           mount_2..mount_N（使用者自訂額外 host mount；/dev 裝置走 path）
+```
+
+Template default 在 `template/setup.conf`；per-repo 覆蓋放 `<repo>/setup.conf`。
+Section-level **replace** 策略：per-repo 檔若有該 section 就整段取代
+template；沒寫的 section 則吃 template 預設。
+
+首次執行 `setup.sh`（尚無 per-repo setup.conf）時，template 檔會被
+複製到 repo，並把偵測到的 workspace 寫入 `[volumes] mount_1`。後續
+執行以 `mount_1` 為真實來源 — 清空該欄即可放棄掛 workspace。編輯方式：
+
+```bash
+./setup_tui.sh                      # 互動式 dialog/whiptail 編輯器
+./setup_tui.sh volumes              # 直接跳到指定 section
+./build.sh --setup            # 有 TTY 時啟動 setup_tui.sh；無 TTY 時執行 setup.sh
+./template/init.sh --gen-conf # 單純複製 template/setup.conf 到 repo 根目錄
+```
+
+### 互動式 TUI
+
+`./setup_tui.sh` 開啟主選單，可編輯 6 個 section 全部的值，底層是
+`dialog` 或 `whiptail`（兩者都缺時會印出 `sudo apt install dialog`
+提示並退出）。按 Cancel / Esc 不存檔離開；存檔後會自動呼叫
+`setup.sh` 重新產生 `.env` + `compose.yaml`。
+
+### setup.sh 什麼時候跑
+
+`setup.sh` 只在明確觸發時才執行 — 並不會在每次 build / run 都重跑：
+
+- **`./template/init.sh`** 建完骨架自動跑一次
+- **`./build.sh --setup` / `./run.sh --setup`**（或 `-s`）— 使用者手動觸發重跑；
+  有 TTY 時先啟動 `setup_tui.sh` 讓使用者修改 `setup.conf`，無 TTY 時直接呼叫 `setup.sh`
+- **首次 bootstrap**：`./build.sh` / `./run.sh` 首次執行（`.env` 尚未存在，
+  例如 CI 新 clone）會自動走相同的 TTY-aware 流程，不用帶 `--setup`
+
+### Drift 偵測
+
+`setup.sh` 把 `SETUP_CONF_HASH`、`SETUP_GUI_DETECTED`、`SETUP_TIMESTAMP`
+寫到 `.env`。每次 `./build.sh` / `./run.sh` 進入時會比對 `setup.conf`
+當前 hash + 系統偵測值，以下任一項改變時印 `[WARNING]`（但不阻擋執行）：
+
+- `setup.conf` 內容（conf hash）
+- GPU / GUI 偵測結果
+- `USER_UID`（使用者身份）
+
+帶 `--setup` 重跑以重新產 `.env` + `compose.yaml`。
+
+### 衍生檔（gitignored）
+
+- `.env` — runtime 變數 + `SETUP_*` drift metadata
+- `compose.yaml` — 含 baseline 與條件區塊的完整 compose
+
+任何時候打開 `compose.yaml` 都能看到當下完整 runtime 配置。
+
 ## 快速開始
 
 ### 加入新 repo
 
 ```bash
-# 1. 加入 subtree
-git subtree add --prefix=template \
-    git@github.com:ycpss91255-docker/template.git main --squash
+# 1. 初始化空的 repo（若已有 repo 且至少一個 commit 則跳過）
+mkdir <repo_name> && cd <repo_name>
+git init
+git commit --allow-empty -m "chore: initial commit"
 
-# 2. 初始化 symlinks（一個指令搞定）
+# 2. 加入 subtree
+git subtree add --prefix=template \
+    https://github.com/ycpss91255-docker/template.git main --squash
+
+# 3. 初始化 symlinks（一個指令搞定）
 ./template/init.sh
 ```
+
+> `git subtree add` 需要 `HEAD` 存在。在剛 `git init` 且沒有任何 commit 的 repo 上會報錯 `ambiguous argument 'HEAD'` 與 `working tree has modifications`。用空 commit 建立 `HEAD`，subtree 才能 merge 進來。
 
 ### 升級
 
@@ -276,7 +360,10 @@ template/
 │   │   ├── run.sh
 │   │   ├── exec.sh
 │   │   ├── stop.sh
-│   │   ├── setup.sh                  # .env 產生器
+│   │   ├── setup_tui.sh                    # 互動式 setup.conf 編輯器（dialog/whiptail）
+│   │   ├── setup.sh                  # .env + compose.yaml 產生器
+│   │   ├── _tui_backend.sh           # dialog / whiptail 包裝函式
+│   │   ├── _tui_conf.sh              # INI validator + 讀寫
 │   │   ├── _lib.sh                   # 共用 helper（_load_env、_compose、_compose_project）
 │   │   ├── i18n.sh                   # 共用語言偵測（_detect_lang、_LANG）
 │   │   └── Makefile
@@ -285,7 +372,8 @@ template/
 ├── dockerfile/
 │   ├── Dockerfile.test-tools         # 預建置 lint/測試工具 image
 │   └── Dockerfile.example            # 新 repo 的 Dockerfile 範本（sys → base → devel → test → [runtime]）
-├── config/                           # Shell/工具設定 + IMAGE_NAME 規則
+├── setup.conf                        # 單一 runtime 配置（per-repo override: <repo>/setup.conf）
+├── config/                           # Container 內部 shell / 工具設定
 │   ├── image_name.conf               # 預設 IMAGE_NAME 偵測規則
 │   ├── pip/
 │   │   ├── setup.sh
