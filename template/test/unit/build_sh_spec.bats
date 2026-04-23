@@ -296,6 +296,39 @@ EOS
   refute_output --partial "TARGETARCH"
 }
 
+@test "build.sh passes --network <value> to docker build when BUILD_NETWORK set in .env" {
+  # Seed .env with BUILD_NETWORK. [build] network controls the docker
+  # build network mode for the auxiliary test-tools image. Required on
+  # hosts where Docker's bridge NAT can't reach the outside (e.g.
+  # Jetson L4T without iptable_raw kernel module).
+  {
+    echo "USER_NAME=tester"
+    echo "IMAGE_NAME=mockimg"
+    echo "DOCKER_HUB_USER=mockuser"
+    echo "BUILD_NETWORK=host"
+  } > "${SANDBOX}/.env"
+  : > "${SANDBOX}/setup.conf"
+  : > "${SANDBOX}/compose.yaml"
+  run bash "${SANDBOX}/build.sh" --dry-run
+  assert_success
+  assert_output --partial "--network host"
+}
+
+@test "build.sh omits --network when BUILD_NETWORK absent from .env" {
+  # No BUILD_NETWORK line → docker build uses its default network
+  # (bridge). build.sh must not pass any --network flag.
+  {
+    echo "USER_NAME=tester"
+    echo "IMAGE_NAME=mockimg"
+    echo "DOCKER_HUB_USER=mockuser"
+  } > "${SANDBOX}/.env"
+  : > "${SANDBOX}/setup.conf"
+  : > "${SANDBOX}/compose.yaml"
+  run bash "${SANDBOX}/build.sh" --dry-run
+  assert_success
+  refute_output --partial "--network"
+}
+
 @test "build.sh --lang zh-TW prints Chinese usage text" {
   run bash "${SANDBOX}/build.sh" --lang zh-TW --help
   assert_success
@@ -365,4 +398,99 @@ EOS
   run cat "${DOCKER_LOG}"
   assert_output --partial "docker build"
   assert_output --partial "-t test-tools:local"
+}
+
+# ── i18n log lines (bootstrap / drift / err_no_env) ────────────────────────
+# These exercise _msg() for every language on every log line that build.sh
+# emits directly. Usage-text coverage lives above; these assert that the
+# *runtime* messages (not just --help) translate end-to-end.
+
+@test "build.sh --lang zh-TW prints Chinese bootstrap log" {
+  run bash "${SANDBOX}/build.sh" --lang zh-TW --dry-run
+  assert_success
+  assert_output --partial "首次執行"
+}
+
+@test "build.sh --lang zh-CN prints Simplified Chinese bootstrap log" {
+  run bash "${SANDBOX}/build.sh" --lang zh-CN --dry-run
+  assert_success
+  assert_output --partial "首次运行"
+}
+
+@test "build.sh --lang ja prints Japanese bootstrap log" {
+  run bash "${SANDBOX}/build.sh" --lang ja --dry-run
+  assert_success
+  assert_output --partial "初回実行"
+}
+
+@test "build.sh default bootstrap log is English" {
+  run bash "${SANDBOX}/build.sh" --dry-run
+  assert_success
+  assert_output --partial "First run"
+}
+
+@test "build.sh --lang zh-TW prints Chinese drift-regen log" {
+  {
+    echo "USER_NAME=tester"
+    echo "IMAGE_NAME=mockimg"
+    echo "DOCKER_HUB_USER=mockuser"
+  } > "${SANDBOX}/.env"
+  : > "${SANDBOX}/setup.conf"
+  : > "${SANDBOX}/compose.yaml"
+  cat > "${SANDBOX}/template/script/docker/setup.sh" <<'EOS'
+#!/usr/bin/env bash
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  set -euo pipefail
+  _base=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --base-path) _base="$2"; shift 2 ;;
+      --lang)      shift 2 ;;
+      *)           shift ;;
+    esac
+  done
+  {
+    echo "USER_NAME=tester"
+    echo "IMAGE_NAME=mockimg"
+    echo "DOCKER_HUB_USER=mockuser"
+  } > "${_base}/.env"
+  echo "# mock compose" > "${_base}/compose.yaml"
+else
+  _check_setup_drift() { return 1; }
+fi
+EOS
+  chmod +x "${SANDBOX}/template/script/docker/setup.sh"
+  run bash "${SANDBOX}/build.sh" --lang zh-TW --dry-run
+  assert_success
+  assert_output --partial "重新產生"
+}
+
+@test "build.sh --lang zh-TW prints Chinese err_no_env on failed bootstrap" {
+  cat > "${SANDBOX}/template/script/docker/setup.sh" <<'EOS'
+#!/usr/bin/env bash
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  exit 0
+else
+  _check_setup_drift() { :; }
+fi
+EOS
+  chmod +x "${SANDBOX}/template/script/docker/setup.sh"
+  run bash "${SANDBOX}/build.sh" --lang zh-TW --dry-run
+  assert_failure
+  assert_output --partial "錯誤"
+}
+
+@test "build.sh --lang ja prints Japanese err_no_env on failed bootstrap" {
+  cat > "${SANDBOX}/template/script/docker/setup.sh" <<'EOS'
+#!/usr/bin/env bash
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  exit 0
+else
+  _check_setup_drift() { :; }
+fi
+EOS
+  chmod +x "${SANDBOX}/template/script/docker/setup.sh"
+  run bash "${SANDBOX}/build.sh" --lang ja --dry-run
+  assert_failure
+  assert_output --partial "エラー"
 }
