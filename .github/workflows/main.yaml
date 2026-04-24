@@ -14,6 +14,7 @@ jobs:
     with:
       image_name: ros1_bridge
       build_runtime: true
+      platforms: linux/amd64,linux/arm64
 
   call-release:
     needs: call-docker-build
