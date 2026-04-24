@@ -23,6 +23,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `COPY config/ /config/` from Dockerfile and the `config directory exists` smoke test — the `/config/` directory was never read at runtime (entrypoint only loads `/bridge.yaml`). `config/*.yaml` files remain in the repo as reference examples and can still be consumed via `--build-arg BRIDGE_FILE=config/<file>.yaml`.
 
 ### Fixed
+- **arm64 / Jetson `./build.sh test` failure (template issue #106).** Dockerfile's inline `bats-src` / `bats-extensions` / `lint-tools` stages had hardcoded `linux.x86_64` / `Linux-x86_64` download URLs, so on arm64 hosts they pulled unusable binaries and the `test` stage exited at `shellcheck -S warning /lint/*.sh`. Migrated to template's pre-built arch-aware `test-tools:local` image (`template/dockerfile/Dockerfile.test-tools` keys off `TARGETARCH`): 3 inline stages deleted, 4 `COPY --from=...` lines switched to `--from=test-tools:local`, net ~17 lines removed. `./build.sh` / `build-worker.yaml` already build `test-tools:local` before the main build.
 - Restore `.env.example` (removed during APT-mirror refactor) so `setup.sh`'s IMAGE_NAME detection has its documented fallback.
 
 ## [v1.4.1] - 2026-03-25

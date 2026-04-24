@@ -1,25 +1,5 @@
 ARG IMAGE="ros:foxy-ros-base-focal"
 
-############################## test tool sources ##############################
-FROM bats/bats:latest AS bats-src
-
-FROM alpine:latest AS bats-extensions
-RUN apk add --no-cache git && \
-    git clone --depth 1 -b v0.3.0 \
-        https://github.com/bats-core/bats-support /bats/bats-support && \
-    git clone --depth 1 -b v2.1.0 \
-        https://github.com/bats-core/bats-assert  /bats/bats-assert
-
-FROM alpine:latest AS lint-tools
-RUN apk add --no-cache curl xz && \
-    curl -fsSL \
-        https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz \
-        | tar -xJ -C /tmp && \
-    mv /tmp/shellcheck-v0.10.0/shellcheck /usr/local/bin/shellcheck && \
-    curl -fsSL -o /usr/local/bin/hadolint \
-        https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64 && \
-    chmod +x /usr/local/bin/hadolint
-
 ############################## devel ##############################
 FROM ${IMAGE} AS devel
 
@@ -80,9 +60,9 @@ CMD ["ros2", "run", "ros1_bridge", "parameter_bridge"]
 ############################## test (ephemeral) ##############################
 FROM devel AS test
 
-# Install lint tools
-COPY --from=lint-tools /usr/local/bin/shellcheck /usr/local/bin/shellcheck
-COPY --from=lint-tools /usr/local/bin/hadolint /usr/local/bin/hadolint
+# Lint tools (from pre-built test-tools image built by build.sh)
+COPY --from=test-tools:local /usr/local/bin/shellcheck /usr/local/bin/shellcheck
+COPY --from=test-tools:local /usr/local/bin/hadolint /usr/local/bin/hadolint
 
 # Lint: ShellCheck (.sh) + Hadolint (Dockerfile)
 COPY .hadolint.yaml /lint/.hadolint.yaml
@@ -93,10 +73,10 @@ COPY script/*.sh /lint/
 RUN shellcheck -S warning /lint/*.sh
 RUN cd /lint && hadolint Dockerfile
 
-# Install bats
-COPY --from=bats-src /opt/bats /opt/bats
-COPY --from=bats-src /usr/lib/bats /usr/lib/bats
-COPY --from=bats-extensions /bats /usr/lib/bats
+# Bats + extensions (from pre-built test-tools image; bats-support / bats-assert
+# are bundled into /usr/lib/bats, no separate stage needed)
+COPY --from=test-tools:local /opt/bats /opt/bats
+COPY --from=test-tools:local /usr/lib/bats /usr/lib/bats
 RUN ln -sf /opt/bats/bin/bats /usr/local/bin/bats
 
 ENV BATS_LIB_PATH="/usr/lib/bats"
