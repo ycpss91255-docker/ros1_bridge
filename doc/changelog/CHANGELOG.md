@@ -8,6 +8,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- Upgrade `template/` subtree to [v0.9.11](https://github.com/ycpss91255-docker/template/releases/tag/v0.9.11). Brings arm64-native CI (multi-arch matrix on `ubuntu-24.04-arm`), Jetson auto-detect for `[deploy] runtime` / `[build] network` (no more manual `network = host` workaround on Jetson), `_sanitize_lang` i18n, `_lib.sh` / `i18n.sh` dedupe, and `upgrade.sh` destructive fast-forward guards.
 - Rebuild `devel` stage from `ros:foxy-ros-base-focal` (multi-arch) plus the ROS 1 snapshot apt repo instead of the amd64-only `osrf/ros:foxy-ros1-bridge`. Enables Jetson (arm64) support.
 - `ENV ROS1_DISTRO=noetic` / `ENV ROS2_DISTRO=foxy` now baked into the image so downstream scripts can reference the distro names without hardcoding.
 - Test stage lint target uses `COPY script/*.sh /lint/` (glob) to pick up new scripts automatically.
