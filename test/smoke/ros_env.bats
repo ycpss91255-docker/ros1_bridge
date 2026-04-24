@@ -63,3 +63,19 @@ setup() {
     run /ros_entrypoint.sh which ros2
     assert_success
 }
+
+@test "entrypoint.sh skips rosparam load when roscore unreachable" {
+    # Regression for the `rosparam load` unconditional call that blocked
+    # container boot on any host without a reachable roscore. With the
+    # timeout guard, entrypoint.sh prints a warning to stderr and still
+    # exec's the CMD so the container comes up.
+    #
+    # Force "unreachable": point ROS_MASTER_URI at a port with no roscore.
+    # `timeout 2 rosparam list` blocks up to 2s before returning non-zero;
+    # the test therefore takes ~2s real time (acceptable for a correctness
+    # test guarded on an actual hang symptom upstream).
+    run env ROS_MASTER_URI=http://127.0.0.1:11311 bash /entrypoint.sh echo hello
+    assert_success
+    assert_output --partial "roscore not reachable"
+    assert_output --partial "hello"
+}
