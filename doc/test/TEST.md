@@ -1,6 +1,6 @@
 # TEST.md
 
-**28 tests** total.
+**29 tests** total.
 
 ## test/smoke/ros_env.bats
 
@@ -30,6 +30,7 @@
 | `ros_entrypoint.sh exists and is executable` | `/ros_entrypoint.sh` is executable |
 | `ros_entrypoint.sh sources both ROS environments` | Running `/ros_entrypoint.sh` yields `ROS_DISTRO=foxy` (ROS 1 then ROS 2 sourced) |
 | `ros_entrypoint.sh exposes ros2 command` | `ros2` binary is on `PATH` after entrypoint |
+| `entrypoint.sh skips rosparam load when roscore unreachable` | `timeout 2 rosparam list` guards the `rosparam load` so a missing roscore doesn't hang container boot |
 
 ## test/smoke/script_help.bats
 
