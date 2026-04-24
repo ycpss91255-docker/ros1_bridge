@@ -7,6 +7,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v1.5.0] - 2026-04-24
+
+First minor release after v1.4.x. Substantial upgrade: Jetson / arm64 native support end-to-end (devel rebuilt from multi-arch base, arm64 CI matrix, GHCR test-tools with correct aarch64 binaries), template bump to v0.10.0 (runtime compose service, run.sh arg realignment, GHCR test-tools D plan, --reset-conf), new 2-terminal demo scripts, and robustness fixes (entrypoint timeout guard, Dockerfile stage migration to test-tools:local).
+
+**BREAKING** for users who were invoking `./run.sh runtime` as a positional target: rewrite as `./run.sh -t runtime`. `./run.sh` bare call is unchanged (devel bash).
+
 ### Changed
 - Upgrade `template/` subtree to [v0.10.0](https://github.com/ycpss91255-docker/template/releases/tag/v0.10.0). Bundles:
   - **Compose `runtime` service** auto-emitted by `setup.sh` when Dockerfile declares `FROM … AS runtime` (closes template #108). `./run.sh -t runtime` no longer errors with "no such service".
