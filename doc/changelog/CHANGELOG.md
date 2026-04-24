@@ -9,6 +9,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 - Upgrade `template/` subtree to [v0.9.11](https://github.com/ycpss91255-docker/template/releases/tag/v0.9.11). Brings arm64-native CI (multi-arch matrix on `ubuntu-24.04-arm`), Jetson auto-detect for `[deploy] runtime` / `[build] network` (no more manual `network = host` workaround on Jetson), `_sanitize_lang` i18n, `_lib.sh` / `i18n.sh` dedupe, and `upgrade.sh` destructive fast-forward guards.
+- Pin `main.yaml` reusable workflows to [`@v0.9.13`](https://github.com/ycpss91255-docker/template/releases/tag/v0.9.13) — picks up the GHCR test-tools migration (D plan, closes template #106) and the associated `build-worker.yaml` fix. Required because this PR's Dockerfile adopts the `ARG TEST_TOOLS_IMAGE` pattern that v0.9.13 introduced.
 - Rebuild `devel` stage from `ros:foxy-ros-base-focal` (multi-arch) plus the ROS 1 snapshot apt repo instead of the amd64-only `osrf/ros:foxy-ros1-bridge`. Enables Jetson (arm64) support.
 - `ENV ROS1_DISTRO=noetic` / `ENV ROS2_DISTRO=foxy` now baked into the image so downstream scripts can reference the distro names without hardcoding.
 - Test stage lint target uses `COPY script/*.sh /lint/` (glob) to pick up new scripts automatically.
@@ -23,7 +24,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `COPY config/ /config/` from Dockerfile and the `config directory exists` smoke test — the `/config/` directory was never read at runtime (entrypoint only loads `/bridge.yaml`). `config/*.yaml` files remain in the repo as reference examples and can still be consumed via `--build-arg BRIDGE_FILE=config/<file>.yaml`.
 
 ### Fixed
-- **arm64 / Jetson `./build.sh test` failure (template issue #106).** Dockerfile's inline `bats-src` / `bats-extensions` / `lint-tools` stages had hardcoded `linux.x86_64` / `Linux-x86_64` download URLs, so on arm64 hosts they pulled unusable binaries and the `test` stage exited at `shellcheck -S warning /lint/*.sh`. Migrated to template's pre-built arch-aware `test-tools:local` image (`template/dockerfile/Dockerfile.test-tools` keys off `TARGETARCH`): 3 inline stages deleted, 4 `COPY --from=...` lines switched to `--from=test-tools:local`, net ~17 lines removed. `./build.sh` / `build-worker.yaml` already build `test-tools:local` before the main build.
+- **arm64 / Jetson `./build.sh test` failure (closes template #106).** Dockerfile's inline `bats-src` / `bats-extensions` / `lint-tools` stages had hardcoded `linux.x86_64` / `Linux-x86_64` download URLs, so on arm64 hosts they pulled unusable binaries and the `test` stage exited at `shellcheck -S warning /lint/*.sh`. Migrated to template's arch-aware pre-built test-tools image (v0.9.13 D plan): top-level `ARG TEST_TOOLS_IMAGE="test-tools:local"` default keeps local `./build.sh` flow unchanged (builds `Dockerfile.test-tools` into host Docker daemon); CI overrides to `ghcr.io/ycpss91255-docker/test-tools:v0.9.13` via `GITHUB_WORKFLOW_REF` parsing in `build-worker.yaml`. New `FROM ${TEST_TOOLS_IMAGE} AS test-tools-stage` alias; 4 `COPY --from=test-tools:local` → `--from=test-tools-stage`. 3 inline stages deleted, net ~15 lines removed.
 - Restore `.env.example` (removed during APT-mirror refactor) so `setup.sh`'s IMAGE_NAME detection has its documented fallback.
 
 ## [v1.4.1] - 2026-03-25

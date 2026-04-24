@@ -1,4 +1,5 @@
 ARG IMAGE="ros:foxy-ros-base-focal"
+ARG TEST_TOOLS_IMAGE="test-tools:local"
 
 ############################## devel ##############################
 FROM ${IMAGE} AS devel
@@ -58,11 +59,16 @@ ENTRYPOINT ["/entrypoint.sh"]
 CMD ["ros2", "run", "ros1_bridge", "parameter_bridge"]
 
 ############################## test (ephemeral) ##############################
+# Resolves to test-tools:local (local ./build.sh builds Dockerfile.test-tools
+# into the host Docker daemon) or ghcr.io/ycpss91255-docker/test-tools:vX.Y.Z
+# (CI passes the matching template tag via --build-arg TEST_TOOLS_IMAGE=...).
+FROM ${TEST_TOOLS_IMAGE} AS test-tools-stage
+
 FROM devel AS test
 
-# Lint tools (from pre-built test-tools image built by build.sh)
-COPY --from=test-tools:local /usr/local/bin/shellcheck /usr/local/bin/shellcheck
-COPY --from=test-tools:local /usr/local/bin/hadolint /usr/local/bin/hadolint
+# Lint tools (from pre-built test-tools image; see TEST_TOOLS_IMAGE at top)
+COPY --from=test-tools-stage /usr/local/bin/shellcheck /usr/local/bin/shellcheck
+COPY --from=test-tools-stage /usr/local/bin/hadolint /usr/local/bin/hadolint
 
 # Lint: ShellCheck (.sh) + Hadolint (Dockerfile)
 COPY .hadolint.yaml /lint/.hadolint.yaml
@@ -75,8 +81,8 @@ RUN cd /lint && hadolint Dockerfile
 
 # Bats + extensions (from pre-built test-tools image; bats-support / bats-assert
 # are bundled into /usr/lib/bats, no separate stage needed)
-COPY --from=test-tools:local /opt/bats /opt/bats
-COPY --from=test-tools:local /usr/lib/bats /usr/lib/bats
+COPY --from=test-tools-stage /opt/bats /opt/bats
+COPY --from=test-tools-stage /usr/lib/bats /usr/lib/bats
 RUN ln -sf /opt/bats/bin/bats /usr/local/bin/bats
 
 ENV BATS_LIB_PATH="/usr/lib/bats"
