@@ -68,12 +68,13 @@ COPY --chmod=0755 script/entrypoint.sh /entrypoint.sh
 COPY --chmod=0755 script/ros_entrypoint.sh /ros_entrypoint.sh
 COPY --chmod=0644 "${BRIDGE_FILE}" /bridge.yaml
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
 
 ############################## runtime ##############################
 FROM devel AS runtime
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["ros2", "run", "ros1_bridge", "parameter_bridge"]
 
 ############################## test (ephemeral) ##############################
@@ -87,6 +88,7 @@ COPY --from=lint-tools /usr/local/bin/hadolint /usr/local/bin/hadolint
 COPY .hadolint.yaml /lint/.hadolint.yaml
 COPY Dockerfile /lint/Dockerfile
 COPY template/script/docker/build.sh template/script/docker/run.sh template/script/docker/exec.sh template/script/docker/stop.sh /lint/
+COPY template/script/docker/_lib.sh template/script/docker/i18n.sh /lint/
 COPY script/*.sh /lint/
 RUN shellcheck -S warning /lint/*.sh
 RUN cd /lint && hadolint Dockerfile
