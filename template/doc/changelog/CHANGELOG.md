@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.9.11] - 2026-04-24
+
+### Fixed
+- **`_lib.sh` fallback `_detect_lang` returned `"zh"` for `zh_TW` (issue
+  #103)** — a copy-paste typo in the fallback used when `i18n.sh` was
+  absent (the Dockerfile `/lint` stage). Fixed to `"zh-TW"`. The
+  follow-up `#104` dedupe below then REMOVED the fallback entirely; the
+  only remaining `_detect_lang` is in `i18n.sh`.
+
+### Changed
+- **`[build] network` now defaults to `auto` (issue #102)**. On Jetson
+  (detected via `/etc/nv_tegra_release`) setup.sh resolves `auto` to
+  `host`, so first-time `./build.sh` succeeds without the DNS failures
+  that Jetson's broken bridge NAT used to cause. Desktop hosts stay on
+  Docker's default bridge. Explicit `host` / `bridge` / `none` /
+  `default` still pass through unchanged; new `off` value for explicit
+  opt-out. New `_resolve_build_network` helper mirrors
+  `_resolve_runtime`'s Jetson-aware pattern.
+- **`_detect_lang` deduplicated: single canonical definition in
+  `i18n.sh` (issue #104)**. Previously `build.sh` / `run.sh` /
+  `exec.sh` / `stop.sh` / `_lib.sh` each shipped an inline fallback
+  `_detect_lang` for when `i18n.sh` wasn't reachable (Dockerfile
+  `/lint` stage). That invited drift — see #103 where `_lib.sh`'s
+  copy had silently returned `zh` instead of `zh-TW` for months.
+  `Dockerfile.example`'s test stage now COPYs `_lib.sh` + `i18n.sh` +
+  `_tui_conf.sh` alongside `*.sh`; scripts look up `_lib.sh` in the
+  template layout OR as a sibling, with a clear error when neither
+  exists. Downstream repos using a custom Dockerfile (not based on
+  `Dockerfile.example`) need to mirror this COPY in their test stage.
+- **`_sanitize_lang` warning now localises to the system `$LANG`**. v0.9.7
+  Agent A scoped this helper out of i18n; a user with `LANG=zh_TW.UTF-8`
+  who typed `--lang xxx` still saw an English WARNING. Now we re-detect
+  from the system env (can't trust `_LANG` — it holds the invalid input
+  the user just passed) and print the warning in zh-TW / zh-CN / ja
+  where applicable, falling back to English for other locales.
+
+### Added
+- **Coverage audit follow-up (+9 unit tests)**. Kcov run flagged four
+  small untested branches in `_lib.sh` and `_tui_conf.sh`; filling them
+  raised non-TUI coverage from 94.4% → 95.7%. New tests:
+  - `_lib_msg count` / `caps` translation keys exercised in all four
+    languages (previously only Files / Identity / etc. were asserted).
+  - `_mount_container_path` helper — four cases (plain /
+    with-mode / env-var-interpolated / no-colon fallback). The symmetric
+    `_mount_host_path` was already covered; the container-side parser
+    had zero unit tests.
+  - `_upsert_conf_value` "section not found" branch — appends a fresh
+    `[section]` header + key when called against a conf that doesn't
+    yet have that section.
+  - `_upsert_conf_value` "section present, key absent at EOF" branch —
+    appends the key to the last section when target key isn't there.
+  - `_write_setup_conf` final-section override flush — an override key
+    whose target is the LAST section in the template gets emitted
+    via the EOF-flush path (previously only the mid-file append branch
+    was asserted).
+  - `_write_setup_conf` removed_keys + flush interplay — ensures a key
+    listed in `removed_keys` does NOT reappear via the EOF flush.
+
+  TUI interactive flows (`_edit_section_*`) in `setup_tui.sh` remain
+  at ~17% — they require a dialog/whiptail stub framework to drive,
+  cost doesn't justify coverage-for-its-own-sake. `setup_tui.sh`
+  validators / I/O helpers are covered at unit level via `tui_spec`.
+
+## [v0.9.10] - 2026-04-24
+
+### Added
+- **Multi-arch support in `build-worker.yaml`** — new `platforms` input
+  (default `"linux/amd64"`, accepts `"linux/amd64,linux/arm64"`). Each
+  requested platform runs as a parallel matrix shard on its own native
+  runner (amd64 → `ubuntu-latest`, arm64 → `ubuntu-24.04-arm`), so arm64
+  builds avoid QEMU emulation and stay in the 5-15 min range instead of
+  30-60 min. Full pipeline (test-tools → test stage smoke → devel →
+  runtime) runs natively per platform. Covers Jetson (Nano / Xavier /
+  Orin, all aarch64) and modern Raspberry Pi (4 / 5 on 64-bit OS) and
+  standard x86 hosts. 32-bit ARM (armv7/v6) intentionally unsupported —
+  no native runner exists and QEMU emulation would balloon CI time;
+  modern Pi defaults to 64-bit OS.
+
+### Changed
+- **`build-worker.yaml` now uses the `docker-container` buildx driver**
+  (was `docker`). Required for multi-arch builds. Side effect:
+  `test-tools:local` is built via `docker/build-push-action@v6` (not
+  plain `docker build`) so the tag lands in buildx's internal image
+  store, visible to the subsequent test-stage build's
+  `COPY --from=test-tools:local` on the same builder.
+- **Matrix job names**: per-platform shards are called
+  `call-docker-build / build (linux/amd64)` etc. A stable-name
+  aggregator job `call-docker-build / docker-build` gates on all
+  shards — downstream `main` branch protection rules that require
+  `call-docker-build / docker-build` keep working without changes.
+
 ## [v0.9.9] - 2026-04-24
 
 ### Added
