@@ -7,6 +7,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Upgrade `template/` subtree to [v0.10.1](https://github.com/ycpss91255-docker/template/releases/tag/v0.10.1). Hotfix release for v0.10.0: `build-worker.yaml` replaces the broken `GITHUB_WORKFLOW_REF` test-tools auto-parse (which read the caller's own tag on downstream release pushes — `ros1_bridge v1.5.0` hit this and 404'd on `ghcr.io/.../test-tools:v1.5.0`) with an explicit `test_tools_version` input.
+- `main.yaml` passes `test_tools_version: v0.10.1` to pin the GHCR image alongside the workflow `@tag` for reproducibility.
+
 ## [v1.5.0] - 2026-04-24
 
 First minor release after v1.4.x. Substantial upgrade: Jetson / arm64 native support end-to-end (devel rebuilt from multi-arch base, arm64 CI matrix, GHCR test-tools with correct aarch64 binaries), template bump to v0.10.0 (runtime compose service, run.sh arg realignment, GHCR test-tools D plan, --reset-conf), new 2-terminal demo scripts, and robustness fixes (entrypoint timeout guard, Dockerfile stage migration to test-tools:local).
