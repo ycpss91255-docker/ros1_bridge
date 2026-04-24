@@ -19,12 +19,20 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Rebuild `devel` stage from `ros:foxy-ros-base-focal` (multi-arch) plus the ROS 1 snapshot apt repo instead of the amd64-only `osrf/ros:foxy-ros1-bridge`. Enables Jetson (arm64) support.
 - `ENV ROS1_DISTRO=noetic` / `ENV ROS2_DISTRO=foxy` now baked into the image so downstream scripts can reference the distro names without hardcoding.
 - Test stage lint target uses `COPY script/*.sh /lint/` (glob) to pick up new scripts automatically.
+- Dockerfile `COPY` for `script/` switched from per-file (`entrypoint.sh`, `ros_entrypoint.sh`) to directory glob (`COPY --chmod=0755 script/ /`) so new helpers (the four demo scripts) are picked up without further Dockerfile edits.
 - Bridge YAML examples now document the full `parameter_bridge` schema: `bridge.yaml` ships `services_1_to_2` / `services_2_to_1` entries and an inline QoS block on `/scan`; `config/scan_bridge.yaml` and `config/release_bridge.yaml` set sensor-data QoS (BEST_EFFORT for image streams, RELIABLE for `camera_info`). READMEs in all four languages note the topic (ROS 2) vs service (ROS 1) `type` format asymmetry.
 - **Split `devel` and `runtime` into separate stages (USER-VISIBLE BEHAVIOR CHANGE).** `devel` CMD is now `bash` — `./run.sh` drops into an interactive shell instead of auto-launching `parameter_bridge`. `devel` ENTRYPOINT is `/ros_entrypoint.sh` (sources ROS1+ROS2 env only, no `rosparam load`) so the shell is usable immediately. The new `runtime` stage (`FROM devel`) keeps `CMD ["ros2", "run", "ros1_bridge", "parameter_bridge"]` and switches ENTRYPOINT back to `/entrypoint.sh` (which does `rosparam load /bridge.yaml` before launch) for production-style auto-bridge deployments. CI builds both (`build_runtime: true` in `main.yaml`). Note: `./run.sh runtime` does not yet work because the auto-generated `compose.yaml` does not emit a `runtime` service (tracked upstream in template); invoke runtime via direct `docker build --target runtime && docker run` until template provides this.
 
 ### Added
 - `script/ros_entrypoint.sh` — osrf-compatible entrypoint that only sources both ROS distros (no `rosparam load`), available at `/ros_entrypoint.sh` in the image. `devel` stage uses this as its `ENTRYPOINT`; `runtime` stage keeps `/entrypoint.sh` (with `rosparam load`).
-- Smoke tests: `ROS1_DISTRO`/`ROS2_DISTRO` env vars, `/ros_entrypoint.sh` existence + ability to source both ROS envs + expose `ros2`.
+- **Demo scripts** — symmetric server/client pairs that run a 2-terminal end-to-end bridge demo with std_msgs/String. Each `*_server.sh` self-bootstraps `roscore` + `parameter_bridge` (loading `/demo_bridge.yaml`) before publishing, with explicit step-by-step logs (`[ros1_server] step N/5: ...`); each `*_client.sh` only sources the relevant distro and subscribes. Trap on the server tears down `roscore` + bridge on Ctrl+C.
+  - `script/ros1_server.sh` — Demo A publisher: bootstraps + `rostopic pub /chatter_1to2 std_msgs/String`. Pair with `ros2_client.sh`.
+  - `script/ros2_client.sh` — Demo A subscriber: `ros2 topic echo /chatter_1to2`.
+  - `script/ros2_server.sh` — Demo B publisher: bootstraps + `ros2 topic pub /chatter_2to1 std_msgs/msg/String`. Pair with `ros1_client.sh`.
+  - `script/ros1_client.sh` — Demo B subscriber: `rostopic echo /chatter_2to1`.
+  - `MESSAGE` env var overrides the published string on either server.
+- `config/demo_bridge.yaml` — bidirectional `std_msgs/msg/String` bridge for `/chatter_1to2` and `/chatter_2to1`, baked into the image as `/demo_bridge.yaml` so the demo scripts pick it up without env overrides.
+- Smoke tests: `ROS1_DISTRO`/`ROS2_DISTRO` env vars, `/ros_entrypoint.sh` existence + ability to source both ROS envs + expose `ros2`, plus 9 new demo-helper tests (4 scripts exist+executable, 4 `-h` prints `Usage:`, `/demo_bridge.yaml` exists). Total: 28 → 37.
 
 ### Removed
 - `COPY config/ /config/` from Dockerfile and the `config directory exists` smoke test — the `/config/` directory was never read at runtime (entrypoint only loads `/bridge.yaml`). `config/*.yaml` files remain in the repo as reference examples and can still be consumed via `--build-arg BRIDGE_FILE=config/<file>.yaml`.

@@ -16,6 +16,7 @@
 - [快速开始](#快速开始)
 - [使用方式](#使用方式)
 - [Bridge 设置](#bridge-设置)
+- [Demo](#demo)
 - [架构](#架构)
 - [目录结构](#目录结构)
 
@@ -126,6 +127,40 @@ services_2_to_1:
     type: rcl_interfaces/GetParameters
 ```
 
+## Demo
+
+两个 terminal 跑 end-to-end bridge demo，消息类型 `std_msgs/String`。
+规则对称:**server** terminal 负责起 `roscore` + `parameter_bridge`
+(读 build 时烤进 image 的 `/demo_bridge.yaml`)，**client** terminal 只订阅。
+
+| Demo | Terminal 1 (server) | Terminal 2 (client) |
+|------|---------------------|---------------------|
+| A — ROS 1 → ROS 2 | `./exec.sh /ros1_server.sh` | `./exec.sh /ros2_client.sh` |
+| B — ROS 2 → ROS 1 | `./exec.sh /ros2_server.sh` | `./exec.sh /ros1_client.sh` |
+
+实际操作(假设容器已用 `./run.sh -d` 起好):
+
+```bash
+# Terminal 1 (server) — 二选一
+./exec.sh /ros1_server.sh    # Demo A
+./exec.sh /ros2_server.sh    # Demo B
+
+# Terminal 2 (client) — 对应的另一半
+./exec.sh /ros2_client.sh    # Demo A
+./exec.sh /ros1_client.sh    # Demo B
+```
+
+Server 脚本每一步都打印进度(`[ros1_server] step N/5: ...`)，所以
+`roscore` 跟 `parameter_bridge` 何时就绪一目了然。要换消息字串用
+`MESSAGE` 环境变量:
+
+```bash
+./exec.sh env MESSAGE="hi from ROS 1" /ros1_server.sh
+```
+
+Server terminal 按 `Ctrl+C` 会收掉 `parameter_bridge` 跟 `roscore`，
+client terminal 接着就 EOF。
+
 ## 架构
 
 ```mermaid
@@ -168,11 +203,16 @@ ros1_bridge/
 ├── template/                    # 共用脚本、测试、CI（git subtree）
 ├── script/
 │   ├── entrypoint.sh            # Source ROS 1 + ROS 2，载入 bridge 设置
-│   └── ros_entrypoint.sh        # 仅 source ROS 环境（兼容 osrf）
+│   ├── ros_entrypoint.sh        # 仅 source ROS 环境（兼容 osrf）
+│   ├── ros1_server.sh           # Demo A publisher（自起 roscore + bridge）
+│   ├── ros1_client.sh           # Demo B subscriber
+│   ├── ros2_server.sh           # Demo B publisher（自起 roscore + bridge）
+│   └── ros2_client.sh           # Demo A subscriber
 ├── bridge.yaml                  # 默认 bridge 设置
 ├── config/                      # 额外 bridge 设置
 │   ├── scan_bridge.yaml         # LaserScan bridge
-│   └── release_bridge.yaml      # Camera + depth bridge
+│   ├── release_bridge.yaml      # Camera + depth bridge
+│   └── demo_bridge.yaml         # Demo 双向 std_msgs/String
 ├── doc/                         # 翻译版 README
 │   ├── README.zh-TW.md          # 繁体中文
 │   ├── README.zh-CN.md          # 简体中文

@@ -45,9 +45,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ARG BRIDGE_FILE="bridge.yaml"
 
-COPY --chmod=0755 script/entrypoint.sh /entrypoint.sh
-COPY --chmod=0755 script/ros_entrypoint.sh /ros_entrypoint.sh
+COPY --chmod=0755 script/ /
 COPY --chmod=0644 "${BRIDGE_FILE}" /bridge.yaml
+COPY --chmod=0644 config/demo_bridge.yaml /demo_bridge.yaml
 
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
