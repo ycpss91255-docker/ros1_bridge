@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.10.2] - 2026-04-24
+
+Companion hotfix to v0.10.1. Same downstream-release blocker (call-release couldn't produce a GitHub Release), different root cause — this one fires *after* build passes. **Strongly recommended** with v0.10.1 for any repo cutting a release.
+
+### Fixed
+- **`release-worker.yaml` no longer tries to copy `compose.yaml` into the release archive.** The file has been a setup.sh-generated derived artifact (gitignored) since v0.9.0 — keeping it in the `cp -r` list meant `call-release` hit `cp: cannot stat 'compose.yaml': No such file or directory` on every tag push. `action-gh-release` never ran so no GitHub Release was created. Surfaced by ros1_bridge's v1.5.0 release attempt (same session as the test_tools_version fix). Removed `compose.yaml` from the cp list; regression tests added (negative + positive cp-list assertions).
+
 ## [v0.10.1] - 2026-04-24
 
 Critical hotfix for v0.10.0. Downstream repos cutting their own release tag (`v*`) hit a hard 404 in the `test` stage via `build-worker.yaml`'s wrong-ref parse, blocking `call-release`. **Strongly recommended** for any downstream repo planning to cut a release.
