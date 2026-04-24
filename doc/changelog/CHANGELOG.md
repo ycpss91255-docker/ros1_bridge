@@ -8,8 +8,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
-- Upgrade `template/` subtree to [v0.10.1](https://github.com/ycpss91255-docker/template/releases/tag/v0.10.1). Hotfix release for v0.10.0: `build-worker.yaml` replaces the broken `GITHUB_WORKFLOW_REF` test-tools auto-parse (which read the caller's own tag on downstream release pushes — `ros1_bridge v1.5.0` hit this and 404'd on `ghcr.io/.../test-tools:v1.5.0`) with an explicit `test_tools_version` input.
-- `main.yaml` passes `test_tools_version: v0.10.1` to pin the GHCR image alongside the workflow `@tag` for reproducibility.
+- Upgrade `template/` subtree to [v0.10.2](https://github.com/ycpss91255-docker/template/releases/tag/v0.10.2). Two-hotfix stack on top of v0.10.0:
+  - **v0.10.1**: `build-worker.yaml` replaces the broken `GITHUB_WORKFLOW_REF` test-tools auto-parse (which read the caller's own tag on downstream release pushes — `ros1_bridge v1.5.0` hit this and 404'd on `ghcr.io/.../test-tools:v1.5.0`) with an explicit `test_tools_version` input.
+  - **v0.10.2**: `release-worker.yaml` drops `compose.yaml` from the release archive `cp -r` list (gitignored derived artifact since v0.9.0; kept in the cp list this whole time). The failed `cp` also killed `action-gh-release`, so tag pushes never produced a GitHub Release.
+- `main.yaml` pins workflows to `@v0.10.2` and passes `test_tools_version: v0.10.2`.
 
 ## [v1.5.0] - 2026-04-24
 
