@@ -8,12 +8,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
-- Upgrade `template/` subtree to [v0.10.0-rc2](https://github.com/ycpss91255-docker/template/releases/tag/v0.10.0-rc2). Bundles:
+- Upgrade `template/` subtree to [v0.10.0](https://github.com/ycpss91255-docker/template/releases/tag/v0.10.0). Bundles:
   - **Compose `runtime` service** auto-emitted by `setup.sh` when Dockerfile declares `FROM … AS runtime` (closes template #108). `./run.sh -t runtime` no longer errors with "no such service".
   - **`run.sh` arg realignment** (closes template #118, BREAKING): target is now `-t/--target` flag (default `devel`); positional args become CMD passthrough (empty → Dockerfile CMD, non-empty → override); `-d + cmd` → exit 2 error. `./run.sh` bare unchanged (devel bash). Migration inside this repo: `./run.sh runtime` now written as `./run.sh -t runtime` (auto-runs `parameter_bridge` attached). `./run.sh -t runtime bash` drops into runtime shell for debug.
-  - **arm64 test-tools** hotfix — `Dockerfile.test-tools` `ARG TARGETARCH=amd64` default used to shadow BuildKit's auto-inject (moby/buildkit#3403), so `:v0.9.13` / `:v0.10.0-rc1` GHCR arm64 variants shipped x86_64 shellcheck / hadolint. v0.10.0-rc2 drops the default; arm64 binaries are now genuinely aarch64 (verified via `docker cp` + `file`).
-  - Intermediate releases (v0.9.11/12/13, v0.10.0-rc1) are superseded; this PR pins `main.yaml` directly to `@v0.10.0-rc2`.
-- Pin `main.yaml` reusable workflows to [`@v0.10.0-rc2`](https://github.com/ycpss91255-docker/template/releases/tag/v0.10.0-rc2).
+  - **arm64 test-tools** hotfix — `Dockerfile.test-tools` `ARG TARGETARCH=amd64` default used to shadow BuildKit's auto-inject (moby/buildkit#3403), so `:v0.9.13` / `:v0.10.0-rc1` GHCR arm64 variants shipped x86_64 shellcheck / hadolint. v0.10.0-rc2+ drops the default; arm64 binaries are now genuinely aarch64 (verified via `docker cp` + `file`).
+  - **`--reset-conf` flag on `build.sh`** (closes template #124) — restores `setup.conf` to the template default in one step, backing up the existing `setup.conf` → `setup.conf.bak` and `.env` → `.env.bak` first. `-y` / `--yes` skips the confirmation prompt.
+  - **`upgrade.sh` sed regex fix** (closes template #61) — handles semver pre-release tags so future RC upgrades stop producing `-rcN-rcM` double suffixes.
+  - Intermediate releases (v0.9.11 through v0.10.0-rc2) are superseded; this PR pins `main.yaml` directly to `@v0.10.0`.
+- Pin `main.yaml` reusable workflows to [`@v0.10.0`](https://github.com/ycpss91255-docker/template/releases/tag/v0.10.0).
 - Rebuild `devel` stage from `ros:foxy-ros-base-focal` (multi-arch) plus the ROS 1 snapshot apt repo instead of the amd64-only `osrf/ros:foxy-ros1-bridge`. Enables Jetson (arm64) support.
 - `ENV ROS1_DISTRO=noetic` / `ENV ROS2_DISTRO=foxy` now baked into the image so downstream scripts can reference the distro names without hardcoding.
 - Test stage lint target uses `COPY script/*.sh /lint/` (glob) to pick up new scripts automatically.
