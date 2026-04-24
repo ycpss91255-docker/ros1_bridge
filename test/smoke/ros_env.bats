@@ -31,6 +31,14 @@ setup() {
     assert_success
 }
 
+@test "ROS1_DISTRO env var is set to noetic" {
+    assert_equal "${ROS1_DISTRO}" "noetic"
+}
+
+@test "ROS2_DISTRO env var is set to foxy" {
+    assert_equal "${ROS2_DISTRO}" "foxy"
+}
+
 # -------------------- Bridge config --------------------
 
 @test "bridge.yaml exists" {
@@ -39,6 +47,21 @@ setup() {
 
 @test "entrypoint.sh exists and is executable" {
     assert [ -x "/entrypoint.sh" ]
+}
+
+@test "ros_entrypoint.sh exists and is executable" {
+    assert [ -x "/ros_entrypoint.sh" ]
+}
+
+@test "ros_entrypoint.sh sources both ROS environments" {
+    run /ros_entrypoint.sh bash -c 'echo "${ROS_DISTRO}"'
+    assert_success
+    assert_line "foxy"
+}
+
+@test "ros_entrypoint.sh exposes ros2 command" {
+    run /ros_entrypoint.sh which ros2
+    assert_success
 }
 
 @test "config directory exists" {

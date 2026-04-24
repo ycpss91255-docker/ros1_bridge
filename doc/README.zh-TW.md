@@ -2,7 +2,7 @@
 
 **[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
-> **TL;DR** — 基於 `osrf/ros:foxy-ros1-bridge` 的 ROS 1/2 bridge 容器。透過 `parameter_bridge` 橋接 ROS 1 (Noetic) 與 ROS 2 (Foxy) topics。
+> **TL;DR** — 以 `ros:foxy-ros-base-focal` 加 ROS 1 snapshot apt repo 自建的 ROS 1/2 bridge 容器。透過 `parameter_bridge` 橋接 ROS 1 (Noetic) 與 ROS 2 (Foxy) topics。base image 為 multi-arch，支援 Jetson (arm64)。
 >
 > ```bash
 > ./build.sh && ./run.sh
@@ -23,8 +23,10 @@
 
 ## 特色
 
-- **預建 bridge 映像**：基於 `osrf/ros:foxy-ros1-bridge`，同時包含 ROS 1 和 ROS 2
+- **自建 bridge 映像**：以 `ros:foxy-ros-base-focal` 為底，透過 ROS 1 snapshot apt repo 併裝 ROS 1 Noetic 與 ROS 2 Foxy
+- **Jetson (arm64) 支援**：base image 為 multi-arch（不同於僅 amd64 的 `osrf/ros:foxy-ros1-bridge`）
 - **Parameter bridge**：透過 YAML 設定可配置的 topic 橋接
+- **雙 entrypoint**：`/entrypoint.sh`（source 兩個 ROS + `rosparam load /bridge.yaml`）與 `/ros_entrypoint.sh`（純 ROS 環境，相容 osrf 慣例）
 - **Smoke Test**：Bats 測試驗證兩個 ROS 環境及 bridge 可用性
 - **Docker Compose**：一個 `compose.yaml` 管理建置與執行
 - **範例設定**：內含 scan 和 camera bridge 設定檔
@@ -100,12 +102,14 @@ topics:
 graph TD
     EXT1["bats/bats:latest"]
     EXT2["alpine:latest"]
-    EXT3["osrf/ros:foxy-ros1-bridge"]
+    EXT3["ros:foxy-ros-base-focal"]
+    EXT4["snapshots.ros.org\n(noetic + foxy apt)"]
 
     EXT1 --> bats-src["bats-src"]
     EXT2 --> bats-ext["bats-extensions"]
 
-    EXT3 --> devel["devel\nentrypoint + bridge config"]
+    EXT3 --> devel["devel\nros1 + ros2 + bridge + entrypoints"]
+    EXT4 --> devel
 
     bats-src --> test["test暫時性\nsmoke/ 執行後丟棄"]
     bats-ext --> test
@@ -131,7 +135,8 @@ ros1_bridge/
 ├── .template_version            # Template subtree 版本（v0.4.1）
 ├── template/                    # 共用腳本、測試、CI（git subtree）
 ├── script/
-│   └── entrypoint.sh            # Source ROS 1 + ROS 2，載入 bridge 設定
+│   ├── entrypoint.sh            # Source ROS 1 + ROS 2，載入 bridge 設定
+│   └── ros_entrypoint.sh        # 僅 source ROS 環境（相容 osrf）
 ├── bridge.yaml                  # 預設 bridge 設定
 ├── config/                      # 額外 bridge 設定
 │   ├── scan_bridge.yaml         # LaserScan bridge

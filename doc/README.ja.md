@@ -2,7 +2,7 @@
 
 **[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
-> **TL;DR** — `osrf/ros:foxy-ros1-bridge` ベースの ROS 1/2 ブリッジコンテナ。`parameter_bridge` で ROS 1 (Noetic) と ROS 2 (Foxy) の topic をブリッジ。
+> **TL;DR** — `ros:foxy-ros-base-focal` に ROS 1 snapshot apt repo を足して自ビルドした ROS 1/2 ブリッジコンテナ。`parameter_bridge` で ROS 1 (Noetic) と ROS 2 (Foxy) の topic をブリッジ。base image は multi-arch のため Jetson (arm64) に対応。
 >
 > ```bash
 > ./build.sh && ./run.sh
@@ -23,8 +23,10 @@
 
 ## 特徴
 
-- **ビルド済み bridge イメージ**：`osrf/ros:foxy-ros1-bridge` ベース、ROS 1 と ROS 2 を同梱
+- **自ビルド bridge イメージ**：`ros:foxy-ros-base-focal` をベースに、ROS 1 snapshot apt repo から ROS 1 Noetic と ROS 2 Foxy を併せてインストール
+- **Jetson (arm64) 対応**：base image が multi-arch（amd64 のみの `osrf/ros:foxy-ros1-bridge` と異なる）
 - **Parameter bridge**：YAML 設定で topic ブリッジを構成可能
+- **デュアル entrypoint**：`/entrypoint.sh`（両 ROS を source + `rosparam load /bridge.yaml`）と `/ros_entrypoint.sh`（ROS 環境のみ、osrf 慣習互換）
 - **Smoke Test**：Bats テストで両 ROS 環境と bridge の可用性を検証
 - **Docker Compose**：`compose.yaml` 一つでビルドと実行を管理
 - **サンプル設定**：scan と camera のブリッジ設定ファイルを同梱
@@ -100,12 +102,14 @@ topics:
 graph TD
     EXT1["bats/bats:latest"]
     EXT2["alpine:latest"]
-    EXT3["osrf/ros:foxy-ros1-bridge"]
+    EXT3["ros:foxy-ros-base-focal"]
+    EXT4["snapshots.ros.org\n(noetic + foxy apt)"]
 
     EXT1 --> bats-src["bats-src"]
     EXT2 --> bats-ext["bats-extensions"]
 
-    EXT3 --> devel["devel\nentrypoint + bridge config"]
+    EXT3 --> devel["devel\nros1 + ros2 + bridge + entrypoints"]
+    EXT4 --> devel
 
     bats-src --> test["test一時的\nsmoke/ ビルド後に破棄"]
     bats-ext --> test
@@ -131,7 +135,8 @@ ros1_bridge/
 ├── .template_version            # Template subtree バージョン（v0.4.1）
 ├── template/                    # 共有スクリプト、テスト、CI（git subtree）
 ├── script/
-│   └── entrypoint.sh            # ROS 1 + ROS 2 を source、bridge 設定を読み込み
+│   ├── entrypoint.sh            # ROS 1 + ROS 2 を source、bridge 設定を読み込み
+│   └── ros_entrypoint.sh        # ROS 環境のみ source（osrf 互換）
 ├── bridge.yaml                  # デフォルト bridge 設定
 ├── config/                      # 追加 bridge 設定
 │   ├── scan_bridge.yaml         # LaserScan bridge
