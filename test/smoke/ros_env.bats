@@ -79,3 +79,49 @@ setup() {
     assert_output --partial "roscore not reachable"
     assert_output --partial "hello"
 }
+
+# -------------------- Demo helpers --------------------
+
+@test "demo_bridge.yaml exists" {
+    assert [ -f "/demo_bridge.yaml" ]
+}
+
+@test "ros1_server.sh exists and is executable" {
+    assert [ -x "/ros1_server.sh" ]
+}
+
+@test "ros1_client.sh exists and is executable" {
+    assert [ -x "/ros1_client.sh" ]
+}
+
+@test "ros2_server.sh exists and is executable" {
+    assert [ -x "/ros2_server.sh" ]
+}
+
+@test "ros2_client.sh exists and is executable" {
+    assert [ -x "/ros2_client.sh" ]
+}
+
+@test "ros1_server.sh -h prints usage" {
+    run bash /ros1_server.sh -h
+    assert_success
+    assert_line --partial "Usage:"
+}
+
+@test "ros1_client.sh -h prints usage" {
+    run bash /ros1_client.sh -h
+    assert_success
+    assert_line --partial "Usage:"
+}
+
+@test "ros2_server.sh -h prints usage" {
+    run bash /ros2_server.sh -h
+    assert_success
+    assert_line --partial "Usage:"
+}
+
+@test "ros2_client.sh -h prints usage" {
+    run bash /ros2_client.sh -h
+    assert_success
+    assert_line --partial "Usage:"
+}

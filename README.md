@@ -16,6 +16,7 @@
 - [Quick Start](#quick-start)
 - [Usage](#usage)
 - [Bridge Configuration](#bridge-configuration)
+- [Demo](#demo)
 - [Architecture](#architecture)
 - [Directory Structure](#directory-structure)
 
@@ -127,6 +128,41 @@ services_2_to_1:
     type: rcl_interfaces/GetParameters
 ```
 
+## Demo
+
+Two-terminal end-to-end bridge demo using `std_msgs/String`. Both demos
+use the same pattern: a **server** terminal that owns `roscore` +
+`parameter_bridge` (loaded from the baked-in `/demo_bridge.yaml`), and a
+**client** terminal that just subscribes.
+
+| Demo | Terminal 1 (server) | Terminal 2 (client) |
+|------|---------------------|---------------------|
+| A — ROS 1 → ROS 2 | `./exec.sh /ros1_server.sh` | `./exec.sh /ros2_client.sh` |
+| B — ROS 2 → ROS 1 | `./exec.sh /ros2_server.sh` | `./exec.sh /ros1_client.sh` |
+
+Steps (assuming the container is up via `./run.sh -d`):
+
+```bash
+# Terminal 1 (server) — pick one demo
+./exec.sh /ros1_server.sh    # Demo A
+./exec.sh /ros2_server.sh    # Demo B
+
+# Terminal 2 (client) — matching pair
+./exec.sh /ros2_client.sh    # Demo A
+./exec.sh /ros1_client.sh    # Demo B
+```
+
+Server scripts log every step (`[ros1_server] step N/5: ...`) so it's
+clear when `roscore` and `parameter_bridge` are up. Override the
+published string with `MESSAGE`:
+
+```bash
+./exec.sh env MESSAGE="hi from ROS 1" /ros1_server.sh
+```
+
+`Ctrl+C` on the server terminal tears down `parameter_bridge` and
+`roscore`; the client terminal then EOFs.
+
 ## Architecture
 
 ```mermaid
@@ -169,11 +205,16 @@ ros1_bridge/
 ├── template/                    # Shared scripts, tests, CI (git subtree)
 ├── script/
 │   ├── entrypoint.sh            # Sources ROS 1 + ROS 2, loads bridge config
-│   └── ros_entrypoint.sh        # ROS env only (osrf-compatible)
+│   ├── ros_entrypoint.sh        # ROS env only (osrf-compatible)
+│   ├── ros1_server.sh           # Demo A publisher (bootstraps roscore + bridge)
+│   ├── ros1_client.sh           # Demo B subscriber
+│   ├── ros2_server.sh           # Demo B publisher (bootstraps roscore + bridge)
+│   └── ros2_client.sh           # Demo A subscriber
 ├── bridge.yaml                  # Default bridge configuration
 ├── config/                      # Additional bridge configs
 │   ├── scan_bridge.yaml         # LaserScan bridge
-│   └── release_bridge.yaml      # Camera + depth bridge
+│   ├── release_bridge.yaml      # Camera + depth bridge
+│   └── demo_bridge.yaml         # Demo bidirectional std_msgs/String
 ├── doc/                         # Translated READMEs
 │   ├── README.zh-TW.md          # Traditional Chinese
 │   ├── README.zh-CN.md          # Simplified Chinese

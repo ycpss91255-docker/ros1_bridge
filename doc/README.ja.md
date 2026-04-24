@@ -16,6 +16,7 @@
 - [クイックスタート](#クイックスタート)
 - [使い方](#使い方)
 - [ブリッジ設定](#ブリッジ設定)
+- [Demo](#demo)
 - [アーキテクチャ](#アーキテクチャ)
 - [ディレクトリ構成](#ディレクトリ構成)
 
@@ -127,6 +128,43 @@ services_2_to_1:
     type: rcl_interfaces/GetParameters
 ```
 
+## Demo
+
+2 つの terminal でエンドツーエンドの bridge デモを実行します。
+メッセージ型は `std_msgs/String`。パターンは対称で、**server**
+terminal が `roscore` + `parameter_bridge`(ビルド時にイメージへ
+焼き込まれた `/demo_bridge.yaml` を読み込む)を起動し、**client**
+terminal は subscribe するだけです。
+
+| Demo | Terminal 1 (server) | Terminal 2 (client) |
+|------|---------------------|---------------------|
+| A — ROS 1 → ROS 2 | `./exec.sh /ros1_server.sh` | `./exec.sh /ros2_client.sh` |
+| B — ROS 2 → ROS 1 | `./exec.sh /ros2_server.sh` | `./exec.sh /ros1_client.sh` |
+
+実際の手順(コンテナを `./run.sh -d` で起動済みとして):
+
+```bash
+# Terminal 1 (server) — どちらかを選択
+./exec.sh /ros1_server.sh    # Demo A
+./exec.sh /ros2_server.sh    # Demo B
+
+# Terminal 2 (client) — 対応するもう一方
+./exec.sh /ros2_client.sh    # Demo A
+./exec.sh /ros1_client.sh    # Demo B
+```
+
+Server スクリプトは各ステップを明示的にログ出力します
+(`[ros1_server] step N/5: ...`)。`roscore` と `parameter_bridge` が
+いつ準備完了になったかが一目で分かります。Publish するメッセージは
+`MESSAGE` 環境変数で上書き可能です:
+
+```bash
+./exec.sh env MESSAGE="hi from ROS 1" /ros1_server.sh
+```
+
+Server terminal で `Ctrl+C` を押すと `parameter_bridge` と `roscore`
+を停止し、client terminal も EOF になります。
+
 ## アーキテクチャ
 
 ```mermaid
@@ -169,11 +207,16 @@ ros1_bridge/
 ├── template/                    # 共有スクリプト、テスト、CI（git subtree）
 ├── script/
 │   ├── entrypoint.sh            # ROS 1 + ROS 2 を source、bridge 設定を読み込み
-│   └── ros_entrypoint.sh        # ROS 環境のみ source（osrf 互換）
+│   ├── ros_entrypoint.sh        # ROS 環境のみ source（osrf 互換）
+│   ├── ros1_server.sh           # Demo A publisher（roscore + bridge を自起動）
+│   ├── ros1_client.sh           # Demo B subscriber
+│   ├── ros2_server.sh           # Demo B publisher（roscore + bridge を自起動）
+│   └── ros2_client.sh           # Demo A subscriber
 ├── bridge.yaml                  # デフォルト bridge 設定
 ├── config/                      # 追加 bridge 設定
 │   ├── scan_bridge.yaml         # LaserScan bridge
-│   └── release_bridge.yaml      # Camera + depth bridge
+│   ├── release_bridge.yaml      # Camera + depth bridge
+│   └── demo_bridge.yaml         # Demo 双方向 std_msgs/String
 ├── doc/                         # 翻訳版 README
 │   ├── README.zh-TW.md          # 繁体字中国語
 │   ├── README.zh-CN.md          # 簡体字中国語
