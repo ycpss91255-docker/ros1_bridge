@@ -156,10 +156,7 @@ flowchart LR
 - `test` は常に `devel` を継承するため、`test/smoke/<repo>_env.bats` の
   runtime assertion が確認するバイナリやファイルは、ユーザーが
   `docker run ... <repo>:devel` で目にするものと一致します。
-- `Dockerfile.test-tools` は別途 `test-tools:local` image をビルドし
-  （上記ステージ連鎖には含まれません）、`test` ステージが
-  `COPY --from=test-tools:local` で bats / shellcheck / hadolint
-  バイナリを取り込みます。
+- `Dockerfile.test-tools` は lint/test ツールセット（bats + shellcheck + hadolint）をビルドします。ダウンストリームの `test` ステージは `ARG TEST_TOOLS_IMAGE` build arg で参照します — デフォルト `test-tools:local`（ローカル `./build.sh` フロー、`Dockerfile.test-tools` を host Docker daemon に load）。CI では `ghcr.io/ycpss91255-docker/test-tools:vX.Y.Z`（`.github/workflows/release-test-tools.yaml` がタグ push ごとに publish するマルチアーキ image）で override し、buildx が registry からアーキ対応の bats / shellcheck / hadolint binary を直接 pull します。`docker-container` buildx driver の step 間 image store 分離問題を回避。
 
 ### Smoke test ヘルパー（ダウンストリーム repo 用）
 
@@ -298,6 +295,23 @@ make upgrade
 # バージョン指定
 ./template/upgrade.sh v0.3.0
 ```
+
+`upgrade.sh` は一度に完結します：`git subtree pull --squash`、post-pull 整合性チェック（destructive FF を検出したら自動 rollback）、`./template/init.sh` による root symlinks の再同期、そして `.github/workflows/main.yaml` 内の `build-worker.yaml@vX.Y.Z` / `release-worker.yaml@vX.Y.Z` を sed で更新します。手動で `git subtree pull` しないでください — sed と init の手順を忘れがちです。
+
+#### 自動バージョン更新（任意）
+
+ダウンストリーム repo は、`template` の新しい tag が出るたびに Dependabot が PR を立てるよう設定できます。`.github/dependabot.yml` を追加します：
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+```
+
+Dependabot は `main.yaml` 内の `uses: ycpss91255-docker/template/...@vX.Y.Z` ref を見て、template の最新 tag と照合して PR を出します。subtree 自体は引き続きローカルで `./template/upgrade.sh vX.Y.Z` を実行する必要があります — Dependabot が扱うのは workflow ref のみです。
 
 ## CI Reusable Workflows
 

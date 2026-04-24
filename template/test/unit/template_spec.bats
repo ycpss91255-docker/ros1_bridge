@@ -470,6 +470,20 @@ EOF
   assert_success
 }
 
+@test "Dockerfile.test-tools ARG TARGETARCH has no default value (must not shadow BuildKit auto-inject)" {
+  # Regression guard: `ARG TARGETARCH=amd64` with a default shadows
+  # BuildKit's per-platform auto-inject (moby/buildkit#3403), which
+  # caused every multi-arch build to fall back to amd64 — arm64 image
+  # variants shipped x86_64 shellcheck / hadolint binaries. Symptom
+  # downstream: `shellcheck: Exec format error` on arm64 CI.
+  run grep -E '^ARG TARGETARCH=' /source/dockerfile/Dockerfile.test-tools
+  assert_failure
+  # But the bare declaration must still be there so the stage can
+  # consume the BuildKit-injected value.
+  run grep -E '^ARG TARGETARCH$' /source/dockerfile/Dockerfile.test-tools
+  assert_success
+}
+
 @test "Dockerfile.test-tools branches case for amd64 and arm64" {
   # Must handle both common arches; amd64 → x86_64 binaries,
   # arm64 → aarch64 (shellcheck) + arm64 (hadolint) binaries.
@@ -627,9 +641,12 @@ _stage_lint_layout() {
 # ════════════════════════════════════════════════════════════════════
 
 @test ".version file exists in template root" {
+  # Semver with optional pre-release (e.g. v0.10.0-rc1). Accepts plain
+  # `vX.Y.Z` and `vX.Y.Z-<identifiers>` per semver §9 so the RC release
+  # workflow doesn't fail on the CHANGELOG self-check.
   assert [ -f /source/.version ]
   run cat /source/.version
-  assert_output --regexp '^v[0-9]+\.[0-9]+\.[0-9]+$'
+  assert_output --regexp '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
 }
 
 @test "upgrade.sh reads version from template/.version" {
@@ -700,6 +717,114 @@ EOF
   assert_output "1"
 
   rm -rf "${_tmp}"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# build-worker.yaml: GHCR test-tools migration (D plan)
+# ════════════════════════════════════════════════════════════════════
+
+@test "build-worker.yaml: no legacy in-job test-tools build step" {
+  # The old `Build test-tools image` step is replaced by GHCR pull
+  # via the TEST_TOOLS_IMAGE build-arg. If it reappears, CI will hit
+  # the cross-step buildx image-store isolation again (v0.9.12 regression).
+  local _yaml="/source/.github/workflows/build-worker.yaml"
+  [[ -f "${_yaml}" ]] || skip "build-worker.yaml not present in /source"
+  run grep -c 'Build test-tools image' "${_yaml}"
+  assert_output "0"
+}
+
+@test "build-worker.yaml: resolves template version from GITHUB_WORKFLOW_REF" {
+  local _yaml="/source/.github/workflows/build-worker.yaml"
+  [[ -f "${_yaml}" ]] || skip "build-worker.yaml not present in /source"
+  run grep -F 'GITHUB_WORKFLOW_REF' "${_yaml}"
+  assert_success
+  # outputs var must carry the ghcr.io tag for downstream build-arg pass-through
+  run grep -F 'ghcr.io/ycpss91255-docker/test-tools' "${_yaml}"
+  assert_success
+}
+
+@test "build-worker.yaml: test build passes TEST_TOOLS_IMAGE build-arg" {
+  local _yaml="/source/.github/workflows/build-worker.yaml"
+  [[ -f "${_yaml}" ]] || skip "build-worker.yaml not present in /source"
+  # The test-stage build step must include TEST_TOOLS_IMAGE so the
+  # downstream Dockerfile's `FROM ${TEST_TOOLS_IMAGE}` stage resolves
+  # to the GHCR image (not the local fallback tag).
+  run awk '
+    /- name: Build test stage/ { inside = 1 }
+    inside && /^[[:space:]]*- name:/ && !/Build test stage/ { inside = 0 }
+    inside { print }
+  ' "${_yaml}"
+  assert_success
+  assert_output --partial 'TEST_TOOLS_IMAGE='
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Dockerfile.example: TEST_TOOLS_IMAGE ARG + named stage
+# ════════════════════════════════════════════════════════════════════
+
+@test "Dockerfile.example has ARG TEST_TOOLS_IMAGE with test-tools:local default" {
+  local _df="/source/dockerfile/Dockerfile.example"
+  [[ -f "${_df}" ]] || skip "Dockerfile.example not present in /source"
+  run grep -E '^ARG TEST_TOOLS_IMAGE="test-tools:local"' "${_df}"
+  assert_success
+}
+
+@test "Dockerfile.example FROM \${TEST_TOOLS_IMAGE} AS test-tools-stage" {
+  local _df="/source/dockerfile/Dockerfile.example"
+  [[ -f "${_df}" ]] || skip "Dockerfile.example not present in /source"
+  run grep -F 'FROM ${TEST_TOOLS_IMAGE} AS test-tools-stage' "${_df}"
+  assert_success
+}
+
+@test "Dockerfile.example test stage copies from test-tools-stage, not test-tools:local" {
+  local _df="/source/dockerfile/Dockerfile.example"
+  [[ -f "${_df}" ]] || skip "Dockerfile.example not present in /source"
+  # All COPY --from referring to the test-tools image must now use the
+  # named stage alias.
+  run grep -c 'COPY --from=test-tools-stage' "${_df}"
+  # 4 copies expected: shellcheck, hadolint, /opt/bats, /usr/lib/bats
+  assert_output "4"
+  # Legacy tag reference must be gone:
+  run grep -c 'COPY --from=test-tools:local' "${_df}"
+  assert_output "0"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# release-test-tools.yaml: GHCR publisher workflow
+# ════════════════════════════════════════════════════════════════════
+
+@test "release-test-tools.yaml exists and pushes to ghcr.io/ycpss91255-docker/test-tools" {
+  local _yaml="/source/.github/workflows/release-test-tools.yaml"
+  [[ -f "${_yaml}" ]] || skip "release-test-tools.yaml not present in /source"
+  run grep -F 'ghcr.io/ycpss91255-docker/test-tools' "${_yaml}"
+  assert_success
+}
+
+@test "release-test-tools.yaml declares packages:write permission" {
+  local _yaml="/source/.github/workflows/release-test-tools.yaml"
+  [[ -f "${_yaml}" ]] || skip "release-test-tools.yaml not present in /source"
+  run grep -F 'packages: write' "${_yaml}"
+  assert_success
+}
+
+@test "release-test-tools.yaml builds multi-arch (amd64 + arm64)" {
+  local _yaml="/source/.github/workflows/release-test-tools.yaml"
+  [[ -f "${_yaml}" ]] || skip "release-test-tools.yaml not present in /source"
+  run grep -F 'platforms: linux/amd64,linux/arm64' "${_yaml}"
+  assert_success
+}
+
+@test "release-test-tools.yaml uses template-repo-local Dockerfile path" {
+  # Regression: this workflow runs in the template repo, so Dockerfile.test-tools
+  # path must be `dockerfile/...` (not `template/dockerfile/...` which is the
+  # downstream subtree path used by build-worker.yaml).
+  local _yaml="/source/.github/workflows/release-test-tools.yaml"
+  [[ -f "${_yaml}" ]] || skip "release-test-tools.yaml not present in /source"
+  run grep -E '^\s*file: dockerfile/Dockerfile\.test-tools$' "${_yaml}"
+  assert_success
+  # And must NOT have the subtree-prefixed path:
+  run grep -c 'file: template/dockerfile/Dockerfile.test-tools' "${_yaml}"
+  assert_output "0"
 }
 
 # ════════════════════════════════════════════════════════════════════
