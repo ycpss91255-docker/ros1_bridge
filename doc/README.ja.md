@@ -26,6 +26,7 @@
 - **自ビルド bridge イメージ**：`ros:foxy-ros-base-focal` をベースに、ROS 1 snapshot apt repo から ROS 1 Noetic と ROS 2 Foxy を併せてインストール
 - **Jetson (arm64) 対応**：base image が multi-arch（amd64 のみの `osrf/ros:foxy-ros1-bridge` と異なる）
 - **Parameter bridge**：YAML 設定で topic ブリッジを構成可能
+- **devel / runtime の分離**：`devel` stage はデバッグ用のプレーンシェル（`CMD bash`）、`runtime` stage は `/bridge.yaml` に基づき `parameter_bridge` を自動起動
 - **デュアル entrypoint**：`/entrypoint.sh`（両 ROS を source + `rosparam load /bridge.yaml`）と `/ros_entrypoint.sh`（ROS 環境のみ、osrf 慣習互換）
 - **Smoke Test**：Bats テストで両 ROS 環境と bridge の可用性を検証
 - **Docker Compose**：`compose.yaml` 一つでビルドと実行を管理
@@ -57,11 +58,23 @@ docker compose build devel     # 同等のコマンド
 
 ### 実行
 
-```bash
-./run.sh                         # デフォルトの bridge 設定で実行
+stage target に応じて 2 モード：
 
-# カスタム bridge モードを使用
-docker compose run --rm devel ros2 run ros1_bridge dynamic_bridge
+```bash
+./run.sh                         # devel：対話 bash シェル、bridge は自動起動しない
+./run.sh -d                      # devel をバックグラウンド起動、./exec.sh で接続
+```
+
+`runtime`（bridge 自動起動）は現状 `docker run` を直接呼ぶ必要があります
+—— 自動生成される `compose.yaml` はまだ `runtime` サービスを emit しません
+（template 側で追跡中）：
+
+```bash
+docker build --target runtime -t ros1_bridge:runtime .
+docker run --rm --network=host ros1_bridge:runtime
+# entrypoint が両 ROS を source、rosparam load /bridge.yaml、
+# その後 `ros2 run ros1_bridge parameter_bridge` を exec します。
+# 前提：host network 上に roscore が起動していること。
 ```
 
 ### 起動中のコンテナに接続
@@ -89,11 +102,29 @@ docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
 
 ### YAML フォーマット
 
+Topic の `type` は ROS 2 形式 `<package>/msg/<MsgName>`、service の `type`
+は ROS 1 形式 `<package>/<SrvName>` を使用します（この非対称は
+`parameter_bridge` の仕様です）。Topic ごとの QoS は `qos` キーで指定でき、
+調整可能な全項目は [`bridge.yaml`](../bridge.yaml) を参照してください。
+
 ```yaml
 topics:
   - topic: /scan
     type: sensor_msgs/msg/LaserScan
     queue_size: 10
+    qos:
+      history: keep_last
+      depth: 5
+      reliability: best_effort
+      durability: volatile
+
+services_1_to_2:
+  - service: /add_two_ints
+    type: example_interfaces/AddTwoInts
+
+services_2_to_1:
+  - service: /get_parameters
+    type: rcl_interfaces/GetParameters
 ```
 
 ## アーキテクチャ
@@ -108,8 +139,10 @@ graph TD
     EXT1 --> bats-src["bats-src"]
     EXT2 --> bats-ext["bats-extensions"]
 
-    EXT3 --> devel["devel\nros1 + ros2 + bridge + entrypoints"]
+    EXT3 --> devel["devel\nros1 + ros2 + entrypoints\nCMD bash"]
     EXT4 --> devel
+
+    devel --> runtime["runtime\nCMD ros2 run ros1_bridge parameter_bridge"]
 
     bats-src --> test["test一時的\nsmoke/ ビルド後に破棄"]
     bats-ext --> test
@@ -126,7 +159,7 @@ graph TD
 ```text
 ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定義
-├── Dockerfile                   # マルチステージビルド（devel + test）
+├── Dockerfile                   # マルチステージビルド（devel + runtime + test）
 ├── build.sh -> template/build.sh    # Symlink
 ├── run.sh -> template/run.sh        # Symlink
 ├── exec.sh -> template/exec.sh      # Symlink

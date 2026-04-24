@@ -1,6 +1,6 @@
 # TEST.md
 
-**29 tests** total.
+**28 tests** total.
 
 ## test/smoke/ros_env.bats
 
@@ -21,7 +21,7 @@
 |------|-------------|
 | `ros1_bridge package is available` | `ros2 pkg list` includes ros1_bridge |
 
-### Bridge config (6)
+### Bridge config (5)
 
 | Test | Description |
 |------|-------------|
@@ -30,7 +30,6 @@
 | `ros_entrypoint.sh exists and is executable` | `/ros_entrypoint.sh` is executable |
 | `ros_entrypoint.sh sources both ROS environments` | Running `/ros_entrypoint.sh` yields `ROS_DISTRO=foxy` (ROS 1 then ROS 2 sourced) |
 | `ros_entrypoint.sh exposes ros2 command` | `ros2` binary is on `PATH` after entrypoint |
-| `config directory exists` | `/config` directory exists |
 
 ## test/smoke/script_help.bats
 

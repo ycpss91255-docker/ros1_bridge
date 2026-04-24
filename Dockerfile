@@ -67,9 +67,13 @@ ARG BRIDGE_FILE="bridge.yaml"
 COPY --chmod=0755 script/entrypoint.sh /entrypoint.sh
 COPY --chmod=0755 script/ros_entrypoint.sh /ros_entrypoint.sh
 COPY --chmod=0644 "${BRIDGE_FILE}" /bridge.yaml
-COPY --chmod=0644 config/ /config/
 
 ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]
+
+############################## runtime ##############################
+FROM devel AS runtime
+
 CMD ["ros2", "run", "ros1_bridge", "parameter_bridge"]
 
 ############################## test (ephemeral) ##############################

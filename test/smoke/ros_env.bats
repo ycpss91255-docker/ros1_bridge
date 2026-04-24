@@ -63,7 +63,3 @@ setup() {
     run /ros_entrypoint.sh which ros2
     assert_success
 }
-
-@test "config directory exists" {
-    assert [ -d "/config" ]
-}

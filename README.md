@@ -26,6 +26,7 @@
 - **Self-built bridge**: `ros:foxy-ros-base-focal` base plus ROS 1 snapshot apt repo — installs ROS 1 Noetic and ROS 2 Foxy side-by-side
 - **Jetson (arm64) support**: multi-arch base image (unlike `osrf/ros:foxy-ros1-bridge`, which is amd64 only)
 - **Parameter bridge**: configurable topic bridging via YAML
+- **devel / runtime split**: `devel` stage is a plain shell (`CMD bash`) for debugging; `runtime` stage auto-starts `parameter_bridge` from `/bridge.yaml`
 - **Dual entrypoints**: `/entrypoint.sh` (sources both ROS distros + `rosparam load /bridge.yaml`) and `/ros_entrypoint.sh` (ROS env only, matches osrf convention)
 - **Smoke Test**: Bats tests verify both ROS environments and bridge availability
 - **Docker Compose**: single `compose.yaml` for build and run
@@ -57,11 +58,23 @@ docker compose build devel     # Equivalent
 
 ### Run
 
-```bash
-./run.sh                         # Run with default bridge config
+Two modes, picked by stage target:
 
-# Or with custom bridge mode
-docker compose run --rm devel ros2 run ros1_bridge dynamic_bridge
+```bash
+./run.sh                         # devel: interactive bash shell, bridge NOT running
+./run.sh -d                      # devel detached, join via ./exec.sh
+```
+
+For `runtime` (auto-bridge) you currently need a direct `docker run` — the
+auto-generated `compose.yaml` does not yet emit a `runtime` service
+(tracked upstream in template):
+
+```bash
+docker build --target runtime -t ros1_bridge:runtime .
+docker run --rm --network=host ros1_bridge:runtime
+# entrypoint sources both ROS distros, rosparam loads /bridge.yaml,
+# then exec's `ros2 run ros1_bridge parameter_bridge`.
+# Requires roscore already running on the host network.
 ```
 
 ### Enter running container
@@ -89,11 +102,29 @@ docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
 
 ### YAML Format
 
+Topic `type` uses the ROS 2 form `<package>/msg/<MsgName>`; service `type`
+uses the ROS 1 form `<package>/<SrvName>` (this asymmetry is intentional in
+`parameter_bridge`). Per-topic QoS is supported via the `qos` key; see
+[`bridge.yaml`](bridge.yaml) for the full set of tunables.
+
 ```yaml
 topics:
   - topic: /scan
     type: sensor_msgs/msg/LaserScan
     queue_size: 10
+    qos:
+      history: keep_last
+      depth: 5
+      reliability: best_effort
+      durability: volatile
+
+services_1_to_2:
+  - service: /add_two_ints
+    type: example_interfaces/AddTwoInts
+
+services_2_to_1:
+  - service: /get_parameters
+    type: rcl_interfaces/GetParameters
 ```
 
 ## Architecture
@@ -108,8 +139,10 @@ graph TD
     EXT1 --> bats-src["bats-src"]
     EXT2 --> bats-ext["bats-extensions"]
 
-    EXT3 --> devel["devel\nros1 + ros2 + bridge + entrypoints"]
+    EXT3 --> devel["devel\nros1 + ros2 + entrypoints\nCMD bash"]
     EXT4 --> devel
+
+    devel --> runtime["runtime\nCMD ros2 run ros1_bridge parameter_bridge"]
 
     bats-src --> test["test (ephemeral)\nsmoke tests, discarded after build"]
     bats-ext --> test
@@ -126,7 +159,7 @@ See [TEST.md](doc/test/TEST.md) for details.
 ```text
 ros1_bridge/
 ├── compose.yaml                 # Docker Compose definition
-├── Dockerfile                   # Multi-stage build (devel + test)
+├── Dockerfile                   # Multi-stage build (devel + runtime + test)
 ├── build.sh -> template/build.sh    # Symlink
 ├── run.sh -> template/run.sh        # Symlink
 ├── exec.sh -> template/exec.sh      # Symlink
