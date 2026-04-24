@@ -155,9 +155,7 @@ flowchart LR
 - `test` 永遠從 `devel` 繼承，所以 `test/smoke/<repo>_env.bats` 裡的
   runtime assertion 所看到的二進位與檔案，就是使用者 `docker run ...
   <repo>:devel` 後會看到的內容。
-- `Dockerfile.test-tools` 另外建置一個 `test-tools:local` image（不在
-  上面的階段鏈中），`test` 階段透過 `COPY --from=test-tools:local`
-  把 bats / shellcheck / hadolint 二進位拉進來。
+- `Dockerfile.test-tools` 建置 lint/test 工具集（bats + shellcheck + hadolint）。下游 `test` 階段透過 `ARG TEST_TOOLS_IMAGE` build arg 引用 — 預設 `test-tools:local`（對應本地 `./build.sh` 流程,把 `Dockerfile.test-tools` 建到 host Docker daemon）。CI 則覆寫成 `ghcr.io/ycpss91255-docker/test-tools:vX.Y.Z`（由 `.github/workflows/release-test-tools.yaml` 在每次 tag 推的預建 multi-arch image）,buildx 直接從 registry 拉對應架構的 bats / shellcheck / hadolint binary,避開 `docker-container` buildx driver 跨 step 不共享 image store 的問題。
 
 ### Smoke test helpers（供下游 repo 使用）
 
@@ -287,6 +285,23 @@ make upgrade
 # 或指定版本
 ./template/upgrade.sh v0.3.0
 ```
+
+`upgrade.sh` 一次完成：`git subtree pull --squash`、post-pull 完整性檢查（偵測到 destructive FF 會自動 rollback）、`./template/init.sh` 重整 root symlinks、以及 sed `.github/workflows/main.yaml` 裡的 `build-worker.yaml@vX.Y.Z` / `release-worker.yaml@vX.Y.Z`。不要手動 `git subtree pull` — sed 與 init 步驟很容易漏掉。
+
+#### 自動升版（選用）
+
+下游 repo 可以讓 Dependabot 在 `template` 出新 tag 時自動開 PR。加入 `.github/dependabot.yml`：
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+```
+
+Dependabot 會讀 `main.yaml` 裡的 `uses: ycpss91255-docker/template/...@vX.Y.Z` ref，比對 template 最新 tag 後開 PR。subtree 本身仍需在本地跑 `./template/upgrade.sh vX.Y.Z` — Dependabot 只負責 workflow ref。
 
 ## CI Reusable Workflows
 

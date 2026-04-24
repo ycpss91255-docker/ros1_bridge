@@ -156,9 +156,16 @@ Notes:
 - `test` is always built from `devel`, so runtime assertions inside
   `test/smoke/<repo>_env.bats` see the same binaries / files a user would
   find after `docker run ... <repo>:devel`.
-- `Dockerfile.test-tools` builds a separate `test-tools:local` image (not
-  part of the stage chain above) that the `test` stage copies bats /
-  shellcheck / hadolint binaries from via `COPY --from=test-tools:local`.
+- `Dockerfile.test-tools` builds the lint/test tool bundle (bats + shellcheck +
+  hadolint). The downstream `test` stage consumes it through an `ARG
+  TEST_TOOLS_IMAGE` build arg — defaults to `test-tools:local` (matches the
+  local `./build.sh` flow that builds `Dockerfile.test-tools` into the host
+  Docker daemon). CI overrides it to
+  `ghcr.io/ycpss91255-docker/test-tools:vX.Y.Z` (pre-built multi-arch image
+  pushed by `.github/workflows/release-test-tools.yaml` on every tag) so
+  buildx pulls the arch-correct binaries over the wire instead of rebuilding
+  them per run, and sidesteps the cross-step image-store isolation that
+  `docker-container` buildx drivers enforce.
 
 ### Smoke test helpers (for downstream repos)
 
@@ -288,6 +295,31 @@ make upgrade
 # Or specify a version
 ./template/upgrade.sh v0.3.0
 ```
+
+`upgrade.sh` handles the full cycle in one go: `git subtree pull --squash`,
+post-pull integrity check (rolls back on destructive FF), `./template/init.sh`
+to resync root symlinks, and `sed` of `.github/workflows/main.yaml`'s
+`build-worker.yaml@vX.Y.Z` / `release-worker.yaml@vX.Y.Z` references. Don't
+subtree pull by hand — the sed + init steps are easy to forget.
+
+#### Automated version bumps (optional)
+
+Downstream repos can let Dependabot open PRs whenever a new `template` tag
+ships. Add `.github/dependabot.yml`:
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+```
+
+Dependabot notices the `uses: ycpss91255-docker/template/...@vX.Y.Z` refs in
+`main.yaml`, compares against the template's latest tag, and files a PR. You
+still run `./template/upgrade.sh vX.Y.Z` locally to sync the subtree itself —
+Dependabot only bumps the workflow refs.
 
 ## CI Reusable Workflows
 

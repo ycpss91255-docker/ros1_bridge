@@ -1,6 +1,6 @@
 # TEST.md
 
-Template self-tests: **654 tests** total (611 unit + 43 integration).
+Template self-tests: **675 tests** total (632 unit + 43 integration).
 
 ## Test Files
 
@@ -111,7 +111,7 @@ build invocation, and **runtime log-line i18n** (bootstrap /
 drift-regen / err_no_env messages translate in all four languages via
 the local `_msg()` table; English remains the default).
 
-### test/unit/run_sh_spec.bats (30)
+### test/unit/run_sh_spec.bats (33)
 
 Unit tests for `run.sh`. Mirrors the build_sh_spec.bats harness;
 `docker ps` reads from a controllable stub file so tests can simulate
@@ -156,7 +156,7 @@ Chinese / Simplified Chinese / Japanese translations of the
 no-instances message, `--all` multi-project teardown loop, and
 fallback `_detect_lang` branches.
 
-### test/unit/compose_gen_spec.bats (38)
+### test/unit/compose_gen_spec.bats (45)
 
 Covers `generate_compose_yaml` conditional output: AUTO-GENERATED
 header, baseline workspace volume, network/ipc/privileged env-var
@@ -180,8 +180,15 @@ conditional GPU deploy block + GUI env/volumes + extra volumes from
 | `extra volumes appended after baseline` | volumes list |
 | `empty extras => no extra mount lines` | empty list |
 | `with GUI+GPU+extras => all sections present` | fully loaded |
+| `emits runtime service when Dockerfile has AS runtime` | #108 auto-emit |
+| `skips runtime service when Dockerfile lacks AS runtime` | opt-out by absence |
+| `skips runtime service when Dockerfile is absent` | no-Dockerfile guard |
+| `runtime service extends devel and overrides target/image/tty/profile` | compose extends shape |
+| `runtime service appears between devel and test blocks` | ordering |
+| `runtime detection is robust against weird whitespace` | regex tolerance |
+| `runtime detection ignores non-runtime stage names` | strict match |
 
-### test/unit/template_spec.bats (105)
+### test/unit/template_spec.bats (116)
 
 | Test | Description |
 |------|-------------|
@@ -259,6 +266,7 @@ conditional GPU deploy block + GUI env/volumes + extra volumes from
 | `exec.sh --dry-run skips precheck and prints compose command` | dry-run e2e |
 | `script/docker/i18n.sh exists` | i18n module exists |
 | `Dockerfile.test-tools includes bats-mock` | bats-mock available in test image |
+| `Dockerfile.test-tools ARG TARGETARCH has no default value (must not shadow BuildKit auto-inject)` | multi-arch build regression |
 | `i18n.sh defines _detect_lang function` | _detect_lang in i18n.sh |
 | `build.sh sources _lib.sh` | build.sh uses shared lib |
 | `run.sh sources _lib.sh` | run.sh uses shared lib |
@@ -280,6 +288,16 @@ conditional GPU deploy block + GUI env/volumes + extra volumes from
 | `upgrade.sh --gen-conf delegates to init.sh --gen-conf` | Delegation |
 | `upgrade.sh --help mentions --gen-conf` | Help text |
 | `upgrade.sh updates main.yaml @tag without clobbering release-worker.yaml` | sed regression |
+| `build-worker.yaml: no legacy in-job test-tools build step` | v0.9.13 GHCR migration |
+| `build-worker.yaml: resolves template version from GITHUB_WORKFLOW_REF` | GHCR tag resolution |
+| `build-worker.yaml: test build passes TEST_TOOLS_IMAGE build-arg` | build-arg wiring |
+| `Dockerfile.example has ARG TEST_TOOLS_IMAGE with test-tools:local default` | ARG default |
+| `Dockerfile.example FROM ${TEST_TOOLS_IMAGE} AS test-tools-stage` | named stage alias |
+| `Dockerfile.example test stage copies from test-tools-stage, not test-tools:local` | stage rename migration |
+| `release-test-tools.yaml exists and pushes to ghcr.io/ycpss91255-docker/test-tools` | GHCR publisher |
+| `release-test-tools.yaml declares packages:write permission` | ghcr auth scope |
+| `release-test-tools.yaml builds multi-arch (amd64 + arm64)` | arch coverage |
+| `release-test-tools.yaml uses template-repo-local Dockerfile path` | no subtree path confusion |
 | `run.sh contains XDG_SESSION_TYPE check` | X11/Wayland branch |
 | `run.sh contains xhost +SI:localuser for wayland` | Wayland xhost |
 | `run.sh contains xhost +local: for X11` | X11 xhost |
