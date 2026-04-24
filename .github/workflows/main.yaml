@@ -13,7 +13,7 @@ jobs:
     uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v0.9.9
     with:
       image_name: ros1_bridge
-      build_runtime: false
+      build_runtime: true
 
   call-release:
     needs: call-docker-build
