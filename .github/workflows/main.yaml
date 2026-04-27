@@ -8,6 +8,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# `call-release` (template's release-worker.yaml) uses
+# softprops/action-gh-release@v2, which needs `contents: write` to
+# create a GitHub Release. Reusable workflow permissions intersect
+# with the caller's, so granting here is required — GitHub Actions
+# default is read-only.
+permissions:
+  contents: write
+
 jobs:
   call-docker-build:
     uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v0.10.2
