@@ -636,6 +636,74 @@ _stage_lint_layout() {
   assert_output "0"
 }
 
+@test "setup.sh defines _setup_msg, not _msg (closes #101)" {
+  # Regression for #101: build.sh / run.sh source setup.sh to obtain
+  # `_check_setup_drift`. setup.sh used to define a top-level `_msg()`
+  # with a smaller key set than the caller's, silently shadowing it
+  # post-source. Subsequent `_msg drift_regen` returned empty and
+  # `printf "%s\n" ""` ate the drift-regen status line on every fresh-
+  # host / setup.conf-changed run. Defensive namespacing fix: rename
+  # to `_setup_msg`. Future helpers in setup.sh should follow the
+  # `_setup_*` prefix convention to keep this immune.
+  run grep -cE '^_msg\(\) \{' /source/script/docker/setup.sh
+  assert_output "0"
+  run grep -cE '^_setup_msg\(\) \{' /source/script/docker/setup.sh
+  assert_output "1"
+}
+
+@test "build.sh _msg keys survive sourcing setup.sh (#101 behavioral)" {
+  # Behavioral guard: source setup.sh in a subshell that already has a
+  # top-level _msg() with rich keys (mirrors what build.sh / run.sh used
+  # to do in the drift-check branch pre-B-1) and assert the rich keys
+  # still resolve afterward. Prior to #101 fix, setup.sh's _msg shadowed
+  # the caller's _msg and `_msg drift_regen` returned empty. Even though
+  # B-1 dropped the `source` callsite, this guard stays so future helpers
+  # added to setup.sh can't reintroduce the bug class.
+  run bash -c '
+    _msg() {
+      case "$1" in
+        drift_regen) echo "regenerating" ;;
+        env_done)    echo "REAL CALLER env_done — should NOT be returned" ;;
+      esac
+    }
+    # shellcheck source=/dev/null
+    source /source/script/docker/setup.sh </dev/null >/dev/null 2>&1 || true
+    _msg drift_regen
+  '
+  assert_success
+  assert_output "regenerating"
+}
+
+@test "build.sh does not source setup.sh (#49 Phase B-1)" {
+  # Structural guard for the #101 fix: B-1 replaced build.sh's
+  # `source "${_setup}"` + `_check_setup_drift "${FILE_PATH}"` with a
+  # subprocess call (`bash setup.sh check-drift --base-path ... --lang ...`).
+  # No future change should put `source` back — that would reopen the
+  # entire shadow-bug class even if _msg vs _setup_msg stays clean.
+  run grep -cE '^[[:space:]]*source[[:space:]]+"\$\{_setup\}"' /source/script/docker/build.sh
+  assert_output "0"
+}
+
+@test "run.sh does not source setup.sh (#49 Phase B-1)" {
+  # Mirror of build.sh structural guard above.
+  run grep -cE '^[[:space:]]*source[[:space:]]+"\$\{_setup\}"' /source/script/docker/run.sh
+  assert_output "0"
+}
+
+@test "build.sh uses subprocess check-drift (#49 Phase B-1)" {
+  # Positive guard: build.sh must invoke setup.sh via subprocess with
+  # the new check-drift subcommand instead of sourcing it.
+  run grep -cE '"\$\{_setup\}"[[:space:]]+check-drift' /source/script/docker/build.sh
+  assert_success
+  refute_output "0"
+}
+
+@test "run.sh uses subprocess check-drift (#49 Phase B-1)" {
+  run grep -cE '"\$\{_setup\}"[[:space:]]+check-drift' /source/script/docker/run.sh
+  assert_success
+  refute_output "0"
+}
+
 # ════════════════════════════════════════════════════════════════════
 # upgrade.sh
 # ════════════════════════════════════════════════════════════════════

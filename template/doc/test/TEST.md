@@ -1,6 +1,6 @@
 # TEST.md
 
-Template self-tests: **688 tests** total (645 unit + 43 integration).
+Template self-tests: **757 tests** total (713 unit + 44 integration).
 
 ## Test Files
 
@@ -34,7 +34,7 @@ Template self-tests: **688 tests** total (645 unit + 43 integration).
 | `_print_config_summary hides sections that are empty in setup.conf` | Empty-section skip |
 | `_print_config_summary warns when setup.conf is missing` | Missing-conf hint |
 
-### test/unit/setup_spec.bats (111)
+### test/unit/setup_spec.bats (166)
 
 Covers core detection (user/hardware/docker/GPU/GUI), the INI parser
 (`_parse_ini_section`), setup.conf section merging (`_load_setup_conf`
@@ -57,6 +57,10 @@ writeback (first-time bootstrap / user-edit respect / opt-out).
 | `write_env` (all fields + SETUP_* metadata) | 1 |
 | `_check_setup_drift` (no-op, silent, conf drift, GPU drift) | 4 |
 | `main` (unknown arg, --base-path / --lang missing value) | 3 |
+| Subcommand dispatch (#49 Phase B-1: apply default / explicit, unknown subcmd, check-drift no-op / clean / drift / bad flag, end-to-end subprocess) | 9 |
+| Subcommand `set` / `show` / `list` (#49 Phase B-2: round-trip, validators reject gpu_count / mount / cgroup / env_kv / port, no .env regen, missing key/section, unknown section, list dump, end-to-end subprocess) | 22 |
+| Subcommand `add` / `remove` (#49 Phase B-3: empty-slot reuse, max+1 after gap, bootstrap on missing setup.conf, validator rejection, remove by key, remove by value, missing key, comment preservation, round-trip) | 17 |
+| Subcommand `reset` + BREAKING no-arg → help (#49 Phase B-4: --yes write, .bak archives, no .env regen, non-tty refusal, unknown flag, first-time bootstrap, no-arg prints help, legacy flag-only errors) | 8 |
 | `_msg` / `_detect_lang` i18n | 6 |
 | `[build]` apt_mirror (empty fallback, override) | 2 |
 | Workspace writeback (first-time, respect user edit, opt-out) | 3 |
@@ -76,7 +80,7 @@ parsers, and setup.conf round-trip.
 | `_load_setup_conf_full` + `_write_setup_conf` (section order, kv, comment preservation, untouched keys, round-trip) | 5 |
 | `_upsert_conf_value` (updates existing, leaves other sections untouched) | 2 |
 
-### test/unit/tui_backend_spec.bats (23)
+### test/unit/tui_backend_spec.bats (30)
 
 Backend detection and wrapper-level arg forwarding. Uses a stub
 `dialog` / `whiptail` binary installed on PATH that logs argv and echoes
@@ -91,6 +95,7 @@ a canned response; exercised with `TUI_STUB_RESPONSE` / `TUI_STUB_EXIT`.
 | `_tui_radiolist` (forwards tag/label/state triples) | 1 |
 | `_tui_checklist` (passes `--separate-output`) | 1 |
 | `_tui_msgbox` / `_tui_yesno` (correct flags, propagates exit code) | 2 |
+| whiptail flag-spelling translation (#136: `--ok-button` / `--cancel-button` instead of `--*-label`, no `--extra-button`; dialog spelling preserved) | 7 |
 
 ### test/unit/build_sh_spec.bats (35)
 
@@ -188,7 +193,7 @@ conditional GPU deploy block + GUI env/volumes + extra volumes from
 | `runtime detection is robust against weird whitespace` | regex tolerance |
 | `runtime detection ignores non-runtime stage names` | strict match |
 
-### test/unit/template_spec.bats (121)
+### test/unit/template_spec.bats (127)
 
 | Test | Description |
 |------|-------------|
@@ -303,6 +308,10 @@ conditional GPU deploy block + GUI env/volumes + extra volumes from
 | `release-test-tools.yaml uses template-repo-local Dockerfile path` | no subtree path confusion |
 | `release-worker.yaml does not cp compose.yaml into the release archive` | v0.10.1 cp-list regression |
 | `release-worker.yaml cp-list still includes Dockerfile + scripts` | positive cp-list guard |
+| `build.sh does not source setup.sh (#49 Phase B-1)` | structural guard for #101 class |
+| `run.sh does not source setup.sh (#49 Phase B-1)` | structural guard for #101 class |
+| `build.sh uses subprocess check-drift (#49 Phase B-1)` | drift via subcommand |
+| `run.sh uses subprocess check-drift (#49 Phase B-1)` | drift via subcommand |
 | `run.sh contains XDG_SESSION_TYPE check` | X11/Wayland branch |
 | `run.sh contains xhost +SI:localuser for wayland` | Wayland xhost |
 | `run.sh contains xhost +local: for X11` | X11 xhost |
@@ -500,7 +509,7 @@ for rollback).
 | `upgrade.sh calls _verify_subtree_intact after subtree pull` | Post-flight ordering |
 | `upgrade.sh snapshots pre-pull HEAD for rollback` | Rollback anchor |
 
-### test/integration/init_new_repo_spec.bats (35)
+### test/integration/init_new_repo_spec.bats (36)
 
 End-to-end verification that `init.sh` produces a complete repo skeleton in
 an empty directory. **Level 1** (file generation only, no Docker). The

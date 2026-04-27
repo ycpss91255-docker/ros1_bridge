@@ -18,16 +18,16 @@ permissions:
 
 jobs:
   call-docker-build:
-    uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v0.10.2
+    uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v0.11.0-rc1
     with:
       image_name: ros1_bridge
       build_runtime: true
       platforms: linux/amd64,linux/arm64
-      test_tools_version: v0.10.2
+      test_tools_version: v0.11.0-rc1
 
   call-release:
     needs: call-docker-build
     if: startsWith(github.ref, 'refs/tags/')
-    uses: ycpss91255-docker/template/.github/workflows/release-worker.yaml@v0.10.2
+    uses: ycpss91255-docker/template/.github/workflows/release-worker.yaml@v0.11.0-rc1
     with:
       archive_name_prefix: ros1_bridge

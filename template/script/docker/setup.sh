@@ -25,32 +25,97 @@ source "${_SETUP_SCRIPT_DIR}/i18n.sh"
 # shellcheck disable=SC1091
 source "${_SETUP_SCRIPT_DIR}/_tui_conf.sh"
 
-_msg() {
+# Renamed from `_msg` to `_setup_msg` (closes #101) so sourcing this
+# file from build.sh / run.sh doesn't silently shadow their own
+# top-level `_msg()` (which carries different keys like
+# drift_regen / err_no_env / err_rerun_setup). The shadowed key
+# lookup would silently return empty — `printf "%s\n" ""` ate the
+# drift-regen status line on every fresh-host / setup.conf-changed
+# run. Defensive namespacing fixes the class of bug for setup.sh's
+# internal i18n table; future helpers added to setup.sh should
+# follow the `_setup_*` prefix convention.
+_setup_msg() {
   local _key="${1}"
   case "${_LANG}" in
     zh-TW)
       case "${_key}" in
-        env_done)      echo ".env 與 compose.yaml 更新完成" ;;
-        env_comment)   echo "自動偵測欄位請勿手動修改，如需變更 WS_PATH 可直接編輯此檔案" ;;
-        unknown_arg)   echo "未知參數" ;;
+        env_done)         echo ".env 與 compose.yaml 更新完成" ;;
+        env_comment)      echo "自動偵測欄位請勿手動修改，如需變更 WS_PATH 可直接編輯此檔案" ;;
+        unknown_arg)      echo "未知參數" ;;
+        unknown_subcmd)   echo "未知子指令" ;;
+        unknown_section)  echo "未知 section" ;;
+        invalid_value)    echo "無效的值" ;;
+        key_not_found)    echo "找不到鍵" ;;
+        section_not_found) echo "找不到 section" ;;
+        usage_set)        echo "用法: setup.sh set <section>.<key> <value> [--base-path PATH] [--lang LANG]" ;;
+        usage_show)       echo "用法: setup.sh show <section>[.<key>] [--base-path PATH] [--lang LANG]" ;;
+        usage_list)       echo "用法: setup.sh list [<section>] [--base-path PATH] [--lang LANG]" ;;
+        usage_add)        echo "用法: setup.sh add <section>.<list> <value> [--base-path PATH] [--lang LANG]" ;;
+        usage_remove)     echo "用法: setup.sh remove <section>.<key> | <section>.<list> <value> [--base-path PATH] [--lang LANG]" ;;
+        reset_confirm)    echo "將以模板預設值覆寫 setup.conf（舊檔備份為 setup.conf.bak / .env.bak）。繼續嗎？" ;;
+        reset_aborted)    echo "已取消，未變更任何檔案" ;;
+        reset_done)       echo "setup.conf 已重設為模板預設值（先前內容備份於 .bak）" ;;
+        reset_needs_yes)  echo "非互動模式：請加 --yes 才會執行 reset（避免誤刪）" ;;
       esac ;;
     zh-CN)
       case "${_key}" in
-        env_done)      echo ".env 与 compose.yaml 更新完成" ;;
-        env_comment)   echo "自动检测字段请勿手动修改，如需变更 WS_PATH 可直接编辑此文件" ;;
-        unknown_arg)   echo "未知参数" ;;
+        env_done)         echo ".env 与 compose.yaml 更新完成" ;;
+        env_comment)      echo "自动检测字段请勿手动修改，如需变更 WS_PATH 可直接编辑此文件" ;;
+        unknown_arg)      echo "未知参数" ;;
+        unknown_subcmd)   echo "未知子命令" ;;
+        unknown_section)  echo "未知 section" ;;
+        invalid_value)    echo "无效的值" ;;
+        key_not_found)    echo "找不到键" ;;
+        section_not_found) echo "找不到 section" ;;
+        usage_set)        echo "用法: setup.sh set <section>.<key> <value> [--base-path PATH] [--lang LANG]" ;;
+        usage_show)       echo "用法: setup.sh show <section>[.<key>] [--base-path PATH] [--lang LANG]" ;;
+        usage_list)       echo "用法: setup.sh list [<section>] [--base-path PATH] [--lang LANG]" ;;
+        usage_add)        echo "用法: setup.sh add <section>.<list> <value> [--base-path PATH] [--lang LANG]" ;;
+        usage_remove)     echo "用法: setup.sh remove <section>.<key> | <section>.<list> <value> [--base-path PATH] [--lang LANG]" ;;
+        reset_confirm)    echo "将以模板默认值覆写 setup.conf（旧文件备份为 setup.conf.bak / .env.bak）。继续吗？" ;;
+        reset_aborted)    echo "已取消，未更改任何文件" ;;
+        reset_done)       echo "setup.conf 已重置为模板默认值（之前内容备份至 .bak）" ;;
+        reset_needs_yes)  echo "非交互模式：请加 --yes 才会执行 reset（避免误删）" ;;
       esac ;;
     ja)
       case "${_key}" in
-        env_done)      echo ".env と compose.yaml 更新完了" ;;
-        env_comment)   echo "自動検出フィールドは手動で編集しないでください。WS_PATH の変更はこのファイルを直接編集してください" ;;
-        unknown_arg)   echo "不明な引数" ;;
+        env_done)         echo ".env と compose.yaml 更新完了" ;;
+        env_comment)      echo "自動検出フィールドは手動で編集しないでください。WS_PATH の変更はこのファイルを直接編集してください" ;;
+        unknown_arg)      echo "不明な引数" ;;
+        unknown_subcmd)   echo "不明なサブコマンド" ;;
+        unknown_section)  echo "不明な section" ;;
+        invalid_value)    echo "無効な値" ;;
+        key_not_found)    echo "キーが見つかりません" ;;
+        section_not_found) echo "section が見つかりません" ;;
+        usage_set)        echo "使い方: setup.sh set <section>.<key> <value> [--base-path PATH] [--lang LANG]" ;;
+        usage_show)       echo "使い方: setup.sh show <section>[.<key>] [--base-path PATH] [--lang LANG]" ;;
+        usage_list)       echo "使い方: setup.sh list [<section>] [--base-path PATH] [--lang LANG]" ;;
+        usage_add)        echo "使い方: setup.sh add <section>.<list> <value> [--base-path PATH] [--lang LANG]" ;;
+        usage_remove)     echo "使い方: setup.sh remove <section>.<key> | <section>.<list> <value> [--base-path PATH] [--lang LANG]" ;;
+        reset_confirm)    echo "テンプレートのデフォルト値で setup.conf を上書きします（旧ファイルは setup.conf.bak / .env.bak にバックアップ）。続行しますか？" ;;
+        reset_aborted)    echo "中断されました。ファイルは変更されていません" ;;
+        reset_done)       echo "setup.conf をテンプレートのデフォルトにリセットしました（旧内容は .bak に保存）" ;;
+        reset_needs_yes)  echo "非対話モード: --yes を指定しないと reset は実行されません（誤削除防止）" ;;
       esac ;;
     *)
       case "${_key}" in
-        env_done)      echo ".env + compose.yaml updated" ;;
-        env_comment)   echo "Auto-detected fields, do not edit manually. Edit WS_PATH if needed" ;;
-        unknown_arg)   echo "Unknown argument" ;;
+        env_done)         echo ".env + compose.yaml updated" ;;
+        env_comment)      echo "Auto-detected fields, do not edit manually. Edit WS_PATH if needed" ;;
+        unknown_arg)      echo "Unknown argument" ;;
+        unknown_subcmd)   echo "Unknown subcommand" ;;
+        unknown_section)  echo "Unknown section" ;;
+        invalid_value)    echo "Invalid value" ;;
+        key_not_found)    echo "Key not found" ;;
+        section_not_found) echo "Section not found" ;;
+        usage_set)        echo "Usage: setup.sh set <section>.<key> <value> [--base-path PATH] [--lang LANG]" ;;
+        usage_show)       echo "Usage: setup.sh show <section>[.<key>] [--base-path PATH] [--lang LANG]" ;;
+        usage_list)       echo "Usage: setup.sh list [<section>] [--base-path PATH] [--lang LANG]" ;;
+        usage_add)        echo "Usage: setup.sh add <section>.<list> <value> [--base-path PATH] [--lang LANG]" ;;
+        usage_remove)     echo "Usage: setup.sh remove <section>.<key> | <section>.<list> <value> [--base-path PATH] [--lang LANG]" ;;
+        reset_confirm)    echo "Overwrite setup.conf with template default? (prior setup.conf → .bak, prior .env → .env.bak)" ;;
+        reset_aborted)    echo "Aborted; no files changed" ;;
+        reset_done)       echo "setup.conf reset to template default (prior contents saved to .bak)" ;;
+        reset_needs_yes)  echo "Non-interactive: pass --yes to confirm reset (prevents accidental destruction)" ;;
       esac ;;
   esac
 }
@@ -70,11 +135,46 @@ usage() {
   case "${_LANG}" in
     *)
       cat >&2 <<'EOF'
-Usage: ./setup.sh [-h|--help] [--base-path <path>] [--lang <en|zh-TW|zh-CN|ja>]
+Usage: ./setup.sh [<subcommand>] [-h|--help] [--base-path <path>] [--lang <en|zh-TW|zh-CN|ja>]
 
 Regenerate .env + compose.yaml from setup.conf + system detection.
 Normally invoked indirectly via `./build.sh --setup` or `./setup_tui.sh`
 Save; run directly for non-interactive / scripted / CI use.
+
+Subcommands:
+  apply         (default) Regenerate .env + compose.yaml. No-arg
+                invocation falls back to apply for backward compat.
+  check-drift   Compare current system / setup.conf against .env's
+                SETUP_* metadata. Exit 0 when in sync, exit 1 (with
+                drift descriptions on stderr) when regen is needed.
+                Used by build.sh / run.sh to decide auto-regen.
+  set <section>.<key> <value>
+                Write a single value into <base-path>/setup.conf
+                (creates the section / key if missing). Validates
+                known typed keys (deploy.gpu_count / volumes.mount_*
+                / devices.cgroup_rule_* / network.port_* /
+                environment.env_* / resources.shm_size). Does NOT
+                regenerate .env — run `apply` afterwards if needed.
+  show <section>[.<key>]
+                Print the value of a single key, or all key=value
+                pairs in a section (in on-disk order). Exits non-zero
+                when the section / key is absent.
+  list [<section>]
+                Without an arg: print every section header + key in
+                setup.conf. With an arg: equivalent to `show <section>`.
+  add <section>.<list> <value>
+                Append a value to a list-style section. Picks the next
+                free numeric suffix (max+1) and writes `<list>_N = <value>`.
+                e.g. `add volumes.mount /foo:/bar` lands in `mount_<next>`.
+                Same validators as `set`.
+  remove <section>.<key>            Delete the exact key.
+  remove <section>.<list> <value>   Delete the first key under the
+                section matching `<list>_*` whose value equals <value>.
+  reset [-y|--yes]
+                Overwrite setup.conf with the template default. Prior
+                setup.conf / .env are saved to setup.conf.bak / .env.bak.
+                Without --yes, prompts for confirmation; non-tty
+                without --yes refuses to proceed.
 
 Options:
   -h, --help            Show this help and exit.
@@ -84,7 +184,7 @@ Options:
                         Defaults to $SETUP_LANG or auto-detected from
                         $LANG.
 
-Outputs (both derived artifacts, gitignored):
+Outputs (apply only — both derived artifacts, gitignored):
   <base-path>/.env          Exported variables + SETUP_* drift metadata
   <base-path>/compose.yaml  Full compose with baseline + conditional
                             blocks (GPU / GUI / extra volumes / etc.)
@@ -1007,7 +1107,7 @@ write_env() {
   local _build_network="${1:-}"
 
   local _comment=""
-  _comment="$(_msg env_comment)"
+  _comment="$(_setup_msg env_comment)"
   cat > "${_env_file}" << EOF
 # Auto-generated by setup.sh on $(date '+%Y-%m-%d %H:%M:%S')
 # ${_comment}
@@ -1136,11 +1236,20 @@ _check_setup_drift() {
 }
 
 # ════════════════════════════════════════════════════════════════════
-# main
+# _setup_check_drift
 #
-# Usage: main [-h|--help] [--base-path <path>] [--lang <en|zh-TW|zh-CN|ja>]
+# Subcommand handler for `setup.sh check-drift`. Parses --base-path /
+# --lang flags then delegates to _check_setup_drift, which prints drift
+# descriptions to stderr and returns 1 when the .env metadata no longer
+# matches current system / setup.conf state.
+#
+# Build.sh / run.sh invoke this as a subprocess (instead of sourcing
+# setup.sh) so internal helpers like _setup_msg can never shadow
+# caller-side _msg keys (closes #101's class of bug).
+#
+# Usage: _setup_check_drift [--base-path <path>] [--lang <code>]
 # ════════════════════════════════════════════════════════════════════
-main() {
+_setup_check_drift() {
   local _base_path=""
 
   while [[ $# -gt 0 ]]; do
@@ -1158,7 +1267,819 @@ main() {
         shift 2
         ;;
       *)
-        printf "[setup] %s: %s\n" "$(_msg unknown_arg)" "$1" >&2
+        printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ -z "${_base_path}" ]]; then
+    _base_path="$(cd -- "${_SETUP_SCRIPT_DIR}/../../.." && pwd -P)"
+  fi
+
+  _check_setup_drift "${_base_path}"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _setup_known_section <section>
+#
+# Returns 0 when <section> is one of the known setup.conf section
+# names, 1 otherwise. Mirrors the section list documented in the
+# project CLAUDE.md and `setup.conf` headers.
+# ════════════════════════════════════════════════════════════════════
+_setup_known_section() {
+  local _s="${1-}"
+  case "${_s}" in
+    image|build|deploy|gui|network|security|resources|environment|tmpfs|devices|volumes)
+      return 0 ;;
+    *)
+      return 1 ;;
+  esac
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _setup_validate_kv <section> <key> <value>
+#
+# For typed keys with a matching validator in `_tui_conf.sh`, runs
+# the validator and returns its exit code. Free-form keys (everything
+# not in the typed list) accept any value (returns 0).
+#
+# Empty values are allowed (writes through `_upsert_conf_value` so the
+# user can clear an opt-in key). The exception is keys whose validator
+# rejects empty by design (gpu_count / mount_* / cgroup_rule_* /
+# port_* / env_*); we delegate to the validator for those.
+# ════════════════════════════════════════════════════════════════════
+_setup_validate_kv() {
+  local _section="${1-}"
+  local _key="${2-}"
+  local _value="${3-}"
+
+  # Empty values: allowed (clear-key semantics) for free-form keys; for
+  # typed keys, fall through to the validator which decides.
+  case "${_section}.${_key}" in
+    deploy.gpu_count)
+      _validate_gpu_count "${_value}" ;;
+    resources.shm_size)
+      # Empty is meaningful (= "use compose default"); only validate
+      # non-empty values.
+      [[ -z "${_value}" ]] && return 0
+      _validate_shm_size "${_value}" ;;
+    *)
+      case "${_section}" in
+        volumes)
+          if [[ "${_key}" == mount_* ]]; then
+            # Empty mount_N is the documented opt-out; don't reject it.
+            [[ -z "${_value}" ]] && return 0
+            _validate_mount "${_value}"
+          else
+            return 0
+          fi
+          ;;
+        devices)
+          if [[ "${_key}" == cgroup_rule_* ]]; then
+            [[ -z "${_value}" ]] && return 0
+            _validate_cgroup_rule "${_value}"
+          else
+            return 0
+          fi
+          ;;
+        environment)
+          if [[ "${_key}" == env_* ]]; then
+            [[ -z "${_value}" ]] && return 0
+            _validate_env_kv "${_value}"
+          else
+            return 0
+          fi
+          ;;
+        network)
+          if [[ "${_key}" == port_* ]]; then
+            [[ -z "${_value}" ]] && return 0
+            _validate_port_mapping "${_value}"
+          else
+            return 0
+          fi
+          ;;
+        *)
+          return 0 ;;
+      esac
+      ;;
+  esac
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _setup_set
+#
+# Subcommand handler for `setup.sh set <section>.<key> <value>`.
+# Validates section + (where applicable) value, then upserts via
+# `_upsert_conf_value` from `_tui_conf.sh` so behaviour matches the
+# TUI's Save path. Does NOT regenerate .env — the user invokes
+# `apply` explicitly when they want the derived artifacts refreshed.
+#
+# Usage: _setup_set <section>.<key> <value> [--base-path PATH]
+#                                           [--lang LANG]
+# ════════════════════════════════════════════════════════════════════
+_setup_set() {
+  local _base_path=""
+  local _spec="" _value="" _have_value=0
+
+  while [[ $# -gt 0 ]]; do
+    # Once <spec> is captured the next bare arg is the value, even if
+    # it starts with '-' (e.g. `set deploy.gpu_count -1` exercises an
+    # invalid value path that the validator must reject — not a flag).
+    if [[ -n "${_spec}" && "${_have_value}" -eq 0 ]]; then
+      case "$1" in
+        --base-path|--lang|-h|--help)
+          ;;
+        *)
+          _value="$1"; _have_value=1; shift
+          continue
+          ;;
+      esac
+    fi
+    case "$1" in
+      -h|--help)
+        usage
+        ;;
+      --base-path)
+        _base_path="${2:?"--base-path requires a value"}"
+        shift 2
+        ;;
+      --lang)
+        _LANG="${2:?"--lang requires a value (en|zh-TW|zh-CN|ja)"}"
+        _sanitize_lang _LANG "setup"
+        shift 2
+        ;;
+      --)
+        shift
+        if [[ $# -gt 0 && -z "${_spec}" ]]; then
+          _spec="$1"; shift
+        fi
+        if [[ $# -gt 0 && "${_have_value}" -eq 0 ]]; then
+          _value="$1"; _have_value=1; shift
+        fi
+        ;;
+      -*)
+        printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "${_spec}" ]]; then
+          _spec="$1"
+        elif [[ "${_have_value}" -eq 0 ]]; then
+          _value="$1"; _have_value=1
+        else
+          printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+          return 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "${_spec}" || "${_have_value}" -eq 0 ]]; then
+    _setup_msg usage_set >&2
+    return 1
+  fi
+
+  # Split <section>.<key>; the first '.' is the separator (keys
+  # themselves never contain dots in setup.conf).
+  if [[ "${_spec}" != *.* ]]; then
+    _setup_msg usage_set >&2
+    return 1
+  fi
+  local _section="${_spec%%.*}"
+  local _key="${_spec#*.}"
+  if [[ -z "${_section}" || -z "${_key}" ]]; then
+    _setup_msg usage_set >&2
+    return 1
+  fi
+
+  if ! _setup_known_section "${_section}"; then
+    printf "[setup] %s: %s\n" "$(_setup_msg unknown_section)" "${_section}" >&2
+    return 2
+  fi
+
+  if ! _setup_validate_kv "${_section}" "${_key}" "${_value}"; then
+    printf "[setup] %s: %s.%s = %s\n" \
+      "$(_setup_msg invalid_value)" "${_section}" "${_key}" "${_value}" >&2
+    return 2
+  fi
+
+  if [[ -z "${_base_path}" ]]; then
+    _base_path="$(cd -- "${_SETUP_SCRIPT_DIR}/../../.." && pwd -P)"
+  fi
+
+  local _conf="${_base_path}/setup.conf"
+  if [[ ! -f "${_conf}" ]]; then
+    # First-time: bootstrap from template default so _upsert_conf_value
+    # has a file to operate on.
+    local _tpl_conf="${_SETUP_SCRIPT_DIR}/../../setup.conf"
+    if [[ -f "${_tpl_conf}" ]]; then
+      cp "${_tpl_conf}" "${_conf}"
+    else
+      : > "${_conf}"
+    fi
+  fi
+
+  _upsert_conf_value "${_conf}" "${_section}" "${_key}" "${_value}"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _setup_show
+#
+# Subcommand handler for `setup.sh show <section>[.<key>]`. Reads
+# <base-path>/setup.conf via `_load_setup_conf_full` so output stays
+# aligned with the TUI's view of the file (preserves on-disk order,
+# strips comments).
+#
+# Output:
+#   show <section>.<key>  → single line with the value
+#   show <section>        → "<key> = <value>" lines, on-disk order
+# Returns 1 when the requested section or key is absent.
+#
+# Usage: _setup_show <section>[.<key>] [--base-path PATH] [--lang LANG]
+# ════════════════════════════════════════════════════════════════════
+_setup_show() {
+  local _base_path=""
+  local _spec=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        usage
+        ;;
+      --base-path)
+        _base_path="${2:?"--base-path requires a value"}"
+        shift 2
+        ;;
+      --lang)
+        _LANG="${2:?"--lang requires a value (en|zh-TW|zh-CN|ja)"}"
+        _sanitize_lang _LANG "setup"
+        shift 2
+        ;;
+      -*)
+        printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "${_spec}" ]]; then
+          _spec="$1"
+        else
+          printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+          return 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "${_spec}" ]]; then
+    _setup_msg usage_show >&2
+    return 1
+  fi
+
+  local _section _key
+  if [[ "${_spec}" == *.* ]]; then
+    _section="${_spec%%.*}"
+    _key="${_spec#*.}"
+  else
+    _section="${_spec}"
+    _key=""
+  fi
+
+  if ! _setup_known_section "${_section}"; then
+    printf "[setup] %s: %s\n" "$(_setup_msg unknown_section)" "${_section}" >&2
+    return 2
+  fi
+
+  if [[ -z "${_base_path}" ]]; then
+    _base_path="$(cd -- "${_SETUP_SCRIPT_DIR}/../../.." && pwd -P)"
+  fi
+
+  local _conf="${_base_path}/setup.conf"
+  local -a _ss_sections=() _ss_keys=() _ss_values=()
+  _load_setup_conf_full "${_conf}" _ss_sections _ss_keys _ss_values
+
+  local _i _ns_key="${_section}.${_key}"
+  if [[ -n "${_key}" ]]; then
+    for (( _i=0; _i<${#_ss_keys[@]}; _i++ )); do
+      if [[ "${_ss_keys[_i]}" == "${_ns_key}" ]]; then
+        printf '%s\n' "${_ss_values[_i]}"
+        return 0
+      fi
+    done
+    printf "[setup] %s: %s\n" "$(_setup_msg key_not_found)" "${_ns_key}" >&2
+    return 1
+  fi
+
+  # Whole-section dump.
+  local _printed=0
+  for (( _i=0; _i<${#_ss_keys[@]}; _i++ )); do
+    if [[ "${_ss_keys[_i]}" == "${_section}."* ]]; then
+      printf '%s = %s\n' "${_ss_keys[_i]#"${_section}".}" "${_ss_values[_i]}"
+      _printed=1
+    fi
+  done
+  if (( _printed == 0 )); then
+    printf "[setup] %s: %s\n" "$(_setup_msg section_not_found)" "${_section}" >&2
+    return 1
+  fi
+  return 0
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _setup_list
+#
+# Subcommand handler for `setup.sh list [<section>]`. Without an arg,
+# prints the entire setup.conf (in on-disk order, comments stripped)
+# as INI-style sections separated by blank lines — suitable for piping
+# into other tooling. With a <section> arg, behaves like `show`.
+#
+# Usage: _setup_list [<section>] [--base-path PATH] [--lang LANG]
+# ════════════════════════════════════════════════════════════════════
+_setup_list() {
+  local _base_path=""
+  local _spec=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        usage
+        ;;
+      --base-path)
+        _base_path="${2:?"--base-path requires a value"}"
+        shift 2
+        ;;
+      --lang)
+        _LANG="${2:?"--lang requires a value (en|zh-TW|zh-CN|ja)"}"
+        _sanitize_lang _LANG "setup"
+        shift 2
+        ;;
+      -*)
+        printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "${_spec}" ]]; then
+          _spec="$1"
+        else
+          printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+          return 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -n "${_spec}" ]]; then
+    # list <section> aliases show <section> for now (B-2 keeps them
+    # equivalent; future iterations may differentiate keys-only vs
+    # keys+values).
+    if [[ -n "${_base_path}" ]]; then
+      _setup_show "${_spec}" --base-path "${_base_path}" --lang "${_LANG}"
+    else
+      _setup_show "${_spec}" --lang "${_LANG}"
+    fi
+    return $?
+  fi
+
+  if [[ -z "${_base_path}" ]]; then
+    _base_path="$(cd -- "${_SETUP_SCRIPT_DIR}/../../.." && pwd -P)"
+  fi
+
+  local _conf="${_base_path}/setup.conf"
+  local -a _ll_sections=() _ll_keys=() _ll_values=()
+  _load_setup_conf_full "${_conf}" _ll_sections _ll_keys _ll_values
+
+  local _si _ki _sect _first=1
+  for _sect in "${_ll_sections[@]}"; do
+    if (( _first )); then
+      _first=0
+    else
+      printf '\n'
+    fi
+    printf '[%s]\n' "${_sect}"
+    for (( _ki=0; _ki<${#_ll_keys[@]}; _ki++ )); do
+      if [[ "${_ll_keys[_ki]}" == "${_sect}."* ]]; then
+        printf '%s = %s\n' "${_ll_keys[_ki]#"${_sect}".}" "${_ll_values[_ki]}"
+      fi
+    done
+  done
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _setup_add
+#
+# Subcommand handler for `setup.sh add <section>.<list> <value>`.
+# Finds the next available numeric suffix N (max-existing + 1, or 1
+# when the section has no entries with that prefix) and writes
+# `<list>_N = <value>` via `_upsert_conf_value`. Bootstraps setup.conf
+# from the template default if absent so first-time users can `add`
+# before they ever ran `apply`. Validators fire through
+# `_setup_validate_kv` against the synthesized key, so e.g.
+# `add volumes.mount` enforces the same `_validate_mount` that
+# `set volumes.mount_3` does. Does NOT regenerate .env.
+#
+# Numbering uses max+1 (never fills gaps left by remove). Predictable
+# for tooling; matches the TUI's `_edit_list_section` "next slot"
+# behaviour.
+#
+# Usage: _setup_add <section>.<list> <value>
+#                   [--base-path PATH] [--lang LANG]
+# ════════════════════════════════════════════════════════════════════
+_setup_add() {
+  local _base_path=""
+  local _spec="" _value="" _have_value=0
+
+  while [[ $# -gt 0 ]]; do
+    # Once <spec> is captured, the next bare arg is the value, even if
+    # it begins with '-' (e.g. negative numbers shouldn't be parsed as
+    # flags). Same shape as _setup_set.
+    if [[ -n "${_spec}" && "${_have_value}" -eq 0 ]]; then
+      case "$1" in
+        --base-path|--lang|-h|--help)
+          ;;
+        *)
+          _value="$1"; _have_value=1; shift
+          continue
+          ;;
+      esac
+    fi
+    case "$1" in
+      -h|--help)
+        usage
+        ;;
+      --base-path)
+        _base_path="${2:?"--base-path requires a value"}"
+        shift 2
+        ;;
+      --lang)
+        _LANG="${2:?"--lang requires a value (en|zh-TW|zh-CN|ja)"}"
+        _sanitize_lang _LANG "setup"
+        shift 2
+        ;;
+      --)
+        shift
+        if [[ $# -gt 0 && -z "${_spec}" ]]; then
+          _spec="$1"; shift
+        fi
+        if [[ $# -gt 0 && "${_have_value}" -eq 0 ]]; then
+          _value="$1"; _have_value=1; shift
+        fi
+        ;;
+      -*)
+        printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "${_spec}" ]]; then
+          _spec="$1"
+        elif [[ "${_have_value}" -eq 0 ]]; then
+          _value="$1"; _have_value=1
+        else
+          printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+          return 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "${_spec}" || "${_have_value}" -eq 0 ]]; then
+    _setup_msg usage_add >&2
+    return 1
+  fi
+
+  if [[ "${_spec}" != *.* ]]; then
+    _setup_msg usage_add >&2
+    return 1
+  fi
+  local _section="${_spec%%.*}"
+  local _list="${_spec#*.}"
+  if [[ -z "${_section}" || -z "${_list}" ]]; then
+    _setup_msg usage_add >&2
+    return 1
+  fi
+
+  if ! _setup_known_section "${_section}"; then
+    printf "[setup] %s: %s\n" "$(_setup_msg unknown_section)" "${_section}" >&2
+    return 2
+  fi
+
+  if [[ -z "${_base_path}" ]]; then
+    _base_path="$(cd -- "${_SETUP_SCRIPT_DIR}/../../.." && pwd -P)"
+  fi
+  local _conf="${_base_path}/setup.conf"
+  if [[ ! -f "${_conf}" ]]; then
+    local _tpl_conf="${_SETUP_SCRIPT_DIR}/../../setup.conf"
+    if [[ -f "${_tpl_conf}" ]]; then
+      cp "${_tpl_conf}" "${_conf}"
+    else
+      : > "${_conf}"
+    fi
+  fi
+
+  # Scan keys[] for "<section>.<list>_<digits>". Pick the first slot
+  # whose value is empty (reuses placeholder slots from the template
+  # default, matches the TUI's `_edit_list_section` behaviour); fall
+  # back to max+1 when every populated slot has content.
+  local -a _sects=() _keys=() _vals=()
+  _load_setup_conf_full "${_conf}" _sects _keys _vals
+  local _max=0 _empty_idx="" _i _k _suffix
+  for (( _i=0; _i<${#_keys[@]}; _i++ )); do
+    _k="${_keys[_i]}"
+    if [[ "${_k}" == "${_section}.${_list}_"* ]]; then
+      _suffix="${_k##*_}"
+      if [[ "${_suffix}" =~ ^[0-9]+$ ]]; then
+        if (( _suffix > _max )); then
+          _max="${_suffix}"
+        fi
+        if [[ -z "${_empty_idx}" && -z "${_vals[_i]}" ]]; then
+          _empty_idx="${_suffix}"
+        fi
+      fi
+    fi
+  done
+  local _new_idx
+  if [[ -n "${_empty_idx}" ]]; then
+    _new_idx="${_empty_idx}"
+  else
+    _new_idx=$(( _max + 1 ))
+  fi
+  local _new_key="${_list}_${_new_idx}"
+
+  if ! _setup_validate_kv "${_section}" "${_new_key}" "${_value}"; then
+    printf "[setup] %s: %s.%s = %s\n" \
+      "$(_setup_msg invalid_value)" "${_section}" "${_new_key}" "${_value}" >&2
+    return 2
+  fi
+
+  _upsert_conf_value "${_conf}" "${_section}" "${_new_key}" "${_value}"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _setup_remove
+#
+# Two argument forms:
+#   1) remove <section>.<key>           — delete that exact key
+#   2) remove <section>.<list> <value>  — delete the FIRST key under
+#      <section> matching `<list>_*` whose value equals <value>
+#
+# Form is selected by argc: a second positional arg switches to
+# remove-by-value mode. Removes one entry per invocation; multiple
+# matches keep the rest (call again to peel further). Preserves
+# comments + ordering via `_write_setup_conf`. Does NOT regenerate
+# .env. Does NOT renumber remaining keys (`_load_setup_conf_full`
+# tolerates gaps, and downstream callers treat the prefix list as
+# unordered).
+#
+# Usage: _setup_remove <section>.<key>            [--base-path] [--lang]
+#        _setup_remove <section>.<list> <value>   [--base-path] [--lang]
+# ════════════════════════════════════════════════════════════════════
+_setup_remove() {
+  local _base_path=""
+  local _spec="" _value="" _have_value=0
+
+  while [[ $# -gt 0 ]]; do
+    if [[ -n "${_spec}" && "${_have_value}" -eq 0 ]]; then
+      case "$1" in
+        --base-path|--lang|-h|--help)
+          ;;
+        *)
+          _value="$1"; _have_value=1; shift
+          continue
+          ;;
+      esac
+    fi
+    case "$1" in
+      -h|--help)
+        usage
+        ;;
+      --base-path)
+        _base_path="${2:?"--base-path requires a value"}"
+        shift 2
+        ;;
+      --lang)
+        _LANG="${2:?"--lang requires a value (en|zh-TW|zh-CN|ja)"}"
+        _sanitize_lang _LANG "setup"
+        shift 2
+        ;;
+      --)
+        shift
+        if [[ $# -gt 0 && -z "${_spec}" ]]; then
+          _spec="$1"; shift
+        fi
+        if [[ $# -gt 0 && "${_have_value}" -eq 0 ]]; then
+          _value="$1"; _have_value=1; shift
+        fi
+        ;;
+      -*)
+        printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+        return 1
+        ;;
+      *)
+        if [[ -z "${_spec}" ]]; then
+          _spec="$1"
+        elif [[ "${_have_value}" -eq 0 ]]; then
+          _value="$1"; _have_value=1
+        else
+          printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+          return 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "${_spec}" || "${_spec}" != *.* ]]; then
+    _setup_msg usage_remove >&2
+    return 1
+  fi
+  local _section="${_spec%%.*}"
+  local _rest="${_spec#*.}"
+  if [[ -z "${_section}" || -z "${_rest}" ]]; then
+    _setup_msg usage_remove >&2
+    return 1
+  fi
+
+  if ! _setup_known_section "${_section}"; then
+    printf "[setup] %s: %s\n" "$(_setup_msg unknown_section)" "${_section}" >&2
+    return 2
+  fi
+
+  if [[ -z "${_base_path}" ]]; then
+    _base_path="$(cd -- "${_SETUP_SCRIPT_DIR}/../../.." && pwd -P)"
+  fi
+  local _conf="${_base_path}/setup.conf"
+  if [[ ! -f "${_conf}" ]]; then
+    printf "[setup] %s: %s\n" "$(_setup_msg key_not_found)" "${_spec}" >&2
+    return 1
+  fi
+
+  local -a _sects=() _keys=() _vals=()
+  _load_setup_conf_full "${_conf}" _sects _keys _vals
+
+  local _target_key="" _i
+  if (( _have_value )); then
+    # Remove-by-value: scan for first <section>.<rest>_* with matching value.
+    for (( _i=0; _i<${#_keys[@]}; _i++ )); do
+      if [[ "${_keys[_i]}" == "${_section}.${_rest}_"* ]] \
+         && [[ "${_vals[_i]}" == "${_value}" ]]; then
+        _target_key="${_keys[_i]#"${_section}".}"
+        break
+      fi
+    done
+    if [[ -z "${_target_key}" ]]; then
+      printf "[setup] %s: %s.%s = %s\n" \
+        "$(_setup_msg key_not_found)" "${_section}" "${_rest}" "${_value}" >&2
+      return 1
+    fi
+  else
+    # Remove-by-key: assert <section>.<rest> exists.
+    local _found=0
+    for (( _i=0; _i<${#_keys[@]}; _i++ )); do
+      if [[ "${_keys[_i]}" == "${_section}.${_rest}" ]]; then
+        _found=1
+        break
+      fi
+    done
+    if (( ! _found )); then
+      printf "[setup] %s: %s\n" "$(_setup_msg key_not_found)" "${_spec}" >&2
+      return 1
+    fi
+    _target_key="${_rest}"
+  fi
+
+  # _write_setup_conf truncates dst before reading tpl, so when dst==src
+  # we'd lose data. Stage current contents into a sibling temp file and
+  # use that as the read source.
+  local _tmp
+  _tmp="$(mktemp "${_conf}.XXXXXX")"
+  cp "${_conf}" "${_tmp}"
+  local -a _empty_s=() _empty_k=() _empty_v=()
+  _write_setup_conf "${_conf}" "${_tmp}" \
+    _empty_s _empty_k _empty_v "${_section}.${_target_key}"
+  rm -f "${_tmp}"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _setup_reset
+#
+# Subcommand handler for `setup.sh reset [--yes]`. Overwrites the
+# repo's setup.conf with the template default, archiving the prior
+# setup.conf to setup.conf.bak and the prior .env to .env.bak so the
+# user has a one-shot rollback path. Mirrors what `build.sh
+# --reset-conf` does today, but exposes it as a setup.sh subcommand
+# for scripted use.
+#
+# Does NOT regenerate .env. The user invokes `apply` afterwards (or
+# build/run will trigger auto-regen via drift detection on the next
+# invocation, since the conf hash will have changed).
+#
+# Without --yes, refuses to proceed when stdin is not a TTY (safety
+# guard so accidental pipeline invocations don't destroy state).
+# With --yes, skips the confirmation regardless of TTY.
+#
+# Usage: _setup_reset [--yes] [--base-path PATH] [--lang LANG]
+# ════════════════════════════════════════════════════════════════════
+_setup_reset() {
+  local _base_path=""
+  local _yes=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        usage
+        ;;
+      -y|--yes)
+        _yes=1
+        shift
+        ;;
+      --base-path)
+        _base_path="${2:?"--base-path requires a value"}"
+        shift 2
+        ;;
+      --lang)
+        _LANG="${2:?"--lang requires a value (en|zh-TW|zh-CN|ja)"}"
+        _sanitize_lang _LANG "setup"
+        shift 2
+        ;;
+      *)
+        printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [[ -z "${_base_path}" ]]; then
+    _base_path="$(cd -- "${_SETUP_SCRIPT_DIR}/../../.." && pwd -P)"
+  fi
+
+  local _conf="${_base_path}/setup.conf"
+  local _env="${_base_path}/.env"
+  local _tpl_conf="${_SETUP_SCRIPT_DIR}/../../setup.conf"
+  if [[ ! -f "${_tpl_conf}" ]]; then
+    printf "[setup] template setup.conf not found at %s\n" "${_tpl_conf}" >&2
+    return 1
+  fi
+
+  if (( ! _yes )); then
+    if [[ ! -t 0 ]]; then
+      printf "[setup] %s\n" "$(_setup_msg reset_needs_yes)" >&2
+      return 1
+    fi
+    printf "[setup] %s [y/N]: " "$(_setup_msg reset_confirm)"
+    local _ans=""
+    read -r _ans
+    case "${_ans}" in
+      y|Y|yes|YES) ;;
+      *)
+        printf "[setup] %s\n" "$(_setup_msg reset_aborted)" >&2
+        return 1
+        ;;
+    esac
+  fi
+
+  if [[ -f "${_conf}" ]]; then
+    cp -f "${_conf}" "${_conf}.bak"
+  fi
+  if [[ -f "${_env}" ]]; then
+    cp -f "${_env}" "${_env}.bak"
+  fi
+  cp -f "${_tpl_conf}" "${_conf}"
+
+  printf "[setup] %s\n" "$(_setup_msg reset_done)"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# _setup_apply
+#
+# Subcommand handler for `setup.sh apply`. Regenerates .env +
+# compose.yaml from setup.conf + system detection. Other subcommands
+# (set/add/remove/reset) intentionally do NOT regen — apply is the
+# explicit gate.
+#
+# Usage: _setup_apply [-h|--help] [--base-path <path>] [--lang <code>]
+# ════════════════════════════════════════════════════════════════════
+_setup_apply() {
+  local _base_path=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -h|--help)
+        usage
+        ;;
+      --base-path)
+        _base_path="${2:?"--base-path requires a value"}"
+        shift 2
+        ;;
+      --lang)
+        _LANG="${2:?"--lang requires a value (en|zh-TW|zh-CN|ja)"}"
+        _sanitize_lang _LANG "setup"
+        shift 2
+        ;;
+      *)
+        printf "[setup] %s: %s\n" "$(_setup_msg unknown_arg)" "$1" >&2
         return 1
         ;;
     esac
@@ -1479,12 +2400,63 @@ main() {
     "${build_network}" \
     "${runtime_resolved}"
 
-  printf "[setup] %s\n" "$(_msg env_done)"
+  printf "[setup] %s\n" "$(_setup_msg env_done)"
   printf "[setup] USER=%s (%s:%s)  GPU=%s/%s  GUI=%s/%s  IMAGE=%s  WS=%s\n" \
     "${user_name}" "${user_uid}" "${user_gid}" \
     "${gpu_enabled_eff}" "${gpu_mode}" \
     "${gui_enabled_eff}" "${gui_mode}" \
     "${image_name}" "${ws_path}"
+}
+
+# ════════════════════════════════════════════════════════════════════
+# main
+#
+# Top-level entry. Routes to subcommand handlers; preserves the legacy
+# flag-only invocation (`setup.sh --base-path X --lang Y`) by falling
+# top-level subcommand dispatch.
+#
+# B-4 BREAKING: no-arg / flag-only invocations no longer alias to
+# `apply`. Either pass `-h`/`--help` (or no args, which now prints
+# the same help) or use an explicit subcommand.
+#
+# Usage: main <subcommand> [args...]
+#   subcommands: apply | check-drift | set | show | list | add | remove | reset
+# ════════════════════════════════════════════════════════════════════
+main() {
+  local _subcmd=""
+  # B-4 BREAKING: no-arg → help (was: silently aliased to apply).
+  # Bare flag invocations (`setup.sh --base-path X --lang Y`, no
+  # subcommand) also error now — the legacy fall-through is gone, so
+  # accidental invocations don't clobber .env / compose.yaml without
+  # an explicit subcommand. Downstream callers (build.sh / run.sh) all
+  # pass `apply` explicitly as of this commit.
+  if [[ $# -eq 0 ]]; then
+    usage
+  fi
+  case "$1" in
+    -h|--help)
+      usage
+      ;;
+    apply|check-drift|set|show|list|add|remove|reset)
+      _subcmd="$1"
+      shift
+      ;;
+    *)
+      printf "[setup] %s: %s\n" "$(_setup_msg unknown_subcmd)" "$1" >&2
+      return 1
+      ;;
+  esac
+
+  case "${_subcmd}" in
+    apply)        _setup_apply       "$@" ;;
+    check-drift)  _setup_check_drift "$@" ;;
+    set)          _setup_set         "$@" ;;
+    show)         _setup_show        "$@" ;;
+    list)         _setup_list        "$@" ;;
+    add)          _setup_add         "$@" ;;
+    remove)       _setup_remove      "$@" ;;
+    reset)        _setup_reset       "$@" ;;
+  esac
 }
 
 # Guard: only run main when executed directly, not when sourced (for testing)
