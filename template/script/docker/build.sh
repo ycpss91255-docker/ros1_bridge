@@ -236,7 +236,7 @@ main() {
     if [[ -t 0 && -t 1 && -x "${_tui}" ]]; then
       "${_tui}" --lang "${_LANG}"
     else
-      "${_setup}" --base-path "${FILE_PATH}" --lang "${_LANG}"
+      "${_setup}" apply --base-path "${FILE_PATH}" --lang "${_LANG}"
     fi
   }
 
@@ -257,19 +257,23 @@ main() {
       || [[ ! -f "${FILE_PATH}/setup.conf" ]] \
       || [[ ! -f "${FILE_PATH}/compose.yaml" ]]; then
     printf "%s\n" "$(_msg bootstrap_info)"
-    "${_setup}" --base-path "${FILE_PATH}" --lang "${_LANG}"
+    "${_setup}" apply --base-path "${FILE_PATH}" --lang "${_LANG}"
   else
-    # shellcheck disable=SC1090
-    source "${_setup}"
     # Drift-check path. When setup.conf / GPU / GUI / USER_UID changed
     # since .env was last generated (e.g. after `git pull` or a manual
     # edit) we regenerate .env + compose.yaml automatically — they are
     # derived artifacts with no user-owned data to preserve, so
     # re-running setup.sh is always safe and saves the user from having
     # to remember `./build.sh --setup`.
-    if ! _check_setup_drift "${FILE_PATH}"; then
+    #
+    # Subprocess invocation (instead of `source`) keeps setup.sh's
+    # internal helpers from leaking into build.sh's namespace. Closes
+    # the class of bug behind #101 — sourcing setup.sh used to shadow
+    # build.sh's _msg() and silently blank out drift_regen / err_no_env
+    # status lines.
+    if ! "${_setup}" check-drift --base-path "${FILE_PATH}" --lang "${_LANG}"; then
       printf "%s\n" "$(_msg drift_regen)"
-      "${_setup}" --base-path "${FILE_PATH}" --lang "${_LANG}"
+      "${_setup}" apply --base-path "${FILE_PATH}" --lang "${_LANG}"
     fi
   fi
 

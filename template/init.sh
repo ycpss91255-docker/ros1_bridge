@@ -187,6 +187,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# call-release uses softprops/action-gh-release@v2 which needs
+# contents: write to create a GitHub Release. Reusable workflow
+# permissions intersect with the caller's, and GitHub Actions'
+# default GITHUB_TOKEN is read-only, so this grant must live here
+# (release-worker.yaml declaring it upstream is not enough).
+permissions:
+  contents: write
+
 jobs:
   call-docker-build:
     uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@${ref}
@@ -317,7 +325,7 @@ _call_setup() {
     return 0
   fi
   _log "Running setup.sh to generate .env + compose.yaml"
-  if ! bash "${_setup}" --base-path "${REPO_ROOT}" >/dev/null; then
+  if ! bash "${_setup}" apply --base-path "${REPO_ROOT}" >/dev/null; then
     _log "WARNING: setup.sh exited non-zero; inspect manually and rerun ./build.sh --setup"
   fi
 }
