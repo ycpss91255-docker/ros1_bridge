@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Create release archive
         run: |
@@ -52,7 +52,7 @@ jobs:
           zip -r  "${ARCHIVE_NAME}.zip"    "${ARCHIVE_NAME}"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body_path: doc/changelog/CHANGELOG.md
           generate_release_notes: true
