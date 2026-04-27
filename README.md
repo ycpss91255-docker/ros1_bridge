@@ -1,226 +1,454 @@
-# ROS 1 Bridge Docker Environment
+# template
 
-**[English](README.md)** | **[繁體中文](doc/README.zh-TW.md)** | **[简体中文](doc/README.zh-CN.md)** | **[日本語](doc/README.ja.md)**
+[![Self Test](https://github.com/ycpss91255-docker/template/actions/workflows/self-test.yaml/badge.svg)](https://github.com/ycpss91255-docker/template/actions/workflows/self-test.yaml)
+[![codecov](https://codecov.io/gh/ycpss91255-docker/template/branch/main/graph/badge.svg)](https://codecov.io/gh/ycpss91255-docker/template)
 
-> **TL;DR** — ROS 1/2 bridge container built from `ros:foxy-ros-base-focal` plus the ROS 1 snapshot apt repo. Bridges ROS 1 (Noetic) and ROS 2 (Foxy) topics via `parameter_bridge`. Multi-arch base supports Jetson (arm64).
->
-> ```bash
-> ./build.sh && ./run.sh
-> ```
+![Language](https://img.shields.io/badge/Language-Bash-blue?style=flat-square)
+![Testing](https://img.shields.io/badge/Testing-Bats-orange?style=flat-square)
+![ShellCheck](https://img.shields.io/badge/ShellCheck-Compliant-brightgreen?style=flat-square)
+![Coverage](https://img.shields.io/badge/Coverage-Kcov-blueviolet?style=flat-square)
+[![License](https://img.shields.io/badge/License-GPL--3.0-yellow?style=flat-square)](./LICENSE)
+
+Shared template for Docker container repos in the [ycpss91255-docker](https://github.com/ycpss91255-docker) organization.
+
+**[English](README.md)** | **[繁體中文](doc/readme/README.zh-TW.md)** | **[简体中文](doc/readme/README.zh-CN.md)** | **[日本語](doc/readme/README.ja.md)**
 
 ---
 
 ## Table of Contents
 
-- [Features](#features)
+- [TL;DR](#tldr)
+- [Overview](#overview)
 - [Quick Start](#quick-start)
-- [Usage](#usage)
-- [Bridge Configuration](#bridge-configuration)
-- [Demo](#demo)
-- [Architecture](#architecture)
+- [CI Reusable Workflows](#ci-reusable-workflows)
+- [Running Template Tests](#running-template-tests)
+- [Tests](#tests)
 - [Directory Structure](#directory-structure)
 
 ---
 
-## Features
-
-- **Self-built bridge**: `ros:foxy-ros-base-focal` base plus ROS 1 snapshot apt repo — installs ROS 1 Noetic and ROS 2 Foxy side-by-side
-- **Jetson (arm64) support**: multi-arch base image (unlike `osrf/ros:foxy-ros1-bridge`, which is amd64 only)
-- **Parameter bridge**: configurable topic bridging via YAML
-- **devel / runtime split**: `devel` stage is a plain shell (`CMD bash`) for debugging; `runtime` stage auto-starts `parameter_bridge` from `/bridge.yaml`
-- **Dual entrypoints**: `/entrypoint.sh` (sources both ROS distros + `rosparam load /bridge.yaml`) and `/ros_entrypoint.sh` (ROS env only, matches osrf convention)
-- **Smoke Test**: Bats tests verify both ROS environments and bridge availability
-- **Docker Compose**: single `compose.yaml` for build and run
-- **Example configs**: includes scan and camera bridge configurations
-
-## Quick Start
+## TL;DR
 
 ```bash
-# 1. Build
-./build.sh
+# New repo from scratch: init + first commit + subtree + init.sh
+mkdir <repo_name> && cd <repo_name>
+git init
+git commit --allow-empty -m "chore: initial commit"
+git subtree add --prefix=template \
+    https://github.com/ycpss91255-docker/template.git main --squash
+./template/init.sh
 
-# 2. Run (requires ROS master running)
-./run.sh
+# Upgrade to latest
+make upgrade-check   # check
+make upgrade         # pull + update version + workflow tag
 
-# 3. Enter running container
-./exec.sh
+# Run CI
+make test            # ShellCheck + Bats + Kcov
+make help            # show all commands
 ```
 
-## Usage
+## Overview
 
-### Build
+This repo consolidates shared scripts, tests, and CI workflows used across all Docker container repos. Instead of maintaining identical files in 15+ repos, each repo pulls this template as a **git subtree** and uses symlinks.
 
-```bash
-./build.sh                       # Build devel (default)
-./build.sh test                  # Build with smoke tests
+### Architecture
 
-docker compose build devel     # Equivalent
+```mermaid
+graph TB
+    subgraph template["template (shared repo)"]
+        scripts[".hadolint.yaml / Makefile.ci / compose.yaml"]
+        smoke["test/smoke/<br/>script_help.bats<br/>display_env.bats"]
+        config["config/<br/>bashrc / tmux / terminator / pip"]
+        mgmt["script/docker/<br/>build.sh / run.sh / exec.sh / stop.sh / setup.sh"]
+        workflows["Reusable Workflows<br/>build-worker.yaml<br/>release-worker.yaml"]
+    end
+
+    subgraph consumer["Docker Repo (e.g. ros_noetic)"]
+        symlinks["build.sh → template/script/docker/build.sh<br/>run.sh → template/script/docker/run.sh<br/>exec.sh / stop.sh / .hadolint.yaml"]
+        dockerfile["Dockerfile<br/>compose.yaml<br/>.env.example<br/>script/entrypoint.sh"]
+        repo_test["test/smoke/<br/>ros_env.bats (repo-specific)"]
+        main_yaml["main.yaml<br/>→ calls reusable workflows"]
+    end
+
+    template -- "git subtree" --> consumer
+    scripts -. symlink .-> symlinks
+    smoke -. "Dockerfile COPY" .-> repo_test
+    workflows -. "@tag reference" .-> main_yaml
 ```
 
-### Run
+### CI/CD Flow
 
-Two modes, picked by stage target:
+```mermaid
+flowchart LR
+    subgraph local["Local"]
+        build_test["./build.sh test"]
+        make_test["make test"]
+    end
 
-```bash
-./run.sh                         # devel: interactive bash shell, bridge NOT running
-./run.sh -d                      # devel detached, join via ./exec.sh
+    subgraph ci_container["CI Container (kcov/kcov)"]
+        shellcheck["ShellCheck"]
+        hadolint["Hadolint"]
+        bats["Bats smoke tests"]
+    end
+
+    subgraph github["GitHub Actions"]
+        build_worker["build-worker.yaml<br/>(from template)"]
+        release_worker["release-worker.yaml<br/>(from template)"]
+    end
+
+    build_test --> ci_container
+    make_test -->|"script/ci/ci.sh"| ci_container
+    shellcheck --> hadolint --> bats
+
+    push["git push / PR"] --> build_worker
+    build_worker -->|"docker build test"| ci_container
+    tag["git tag v*"] --> release_worker
+    release_worker -->|"tar.gz + zip"| release["GitHub Release"]
 ```
 
-For `runtime` (auto-bridge) you currently need a direct `docker run` — the
-auto-generated `compose.yaml` does not yet emit a `runtime` service
-(tracked upstream in template):
-
-```bash
-docker build --target runtime -t ros1_bridge:runtime .
-docker run --rm --network=host ros1_bridge:runtime
-# entrypoint sources both ROS distros, rosparam loads /bridge.yaml,
-# then exec's `ros2 run ros1_bridge parameter_bridge`.
-# Requires roscore already running on the host network.
-```
-
-### Enter running container
-
-```bash
-./exec.sh
-./exec.sh bash
-```
-
-## Bridge Configuration
-
-The default bridge config is `bridge.yaml`. Additional configs are in `config/`:
+### What's included
 
 | File | Description |
 |------|-------------|
-| `bridge.yaml` | Default config (LaserScan `/scan`) |
-| `config/scan_bridge.yaml` | LaserScan bridge |
-| `config/release_bridge.yaml` | Camera + depth topics bridge |
+| `build.sh` | Build containers (TTY-aware `--setup` launches `setup_tui.sh`, else runs `setup.sh`) |
+| `run.sh` | Run containers (X11/Wayland support; same `--setup` semantics as `build.sh`) |
+| `exec.sh` | Exec into running containers |
+| `stop.sh` | Stop and remove containers |
+| `setup_tui.sh` | Interactive setup.conf editor (dialog / whiptail front-end) |
+| `script/docker/setup.sh` | Auto-detect system parameters and generate `.env` + `compose.yaml` |
+| `script/docker/_tui_backend.sh` | dialog/whiptail wrapper functions used by `setup_tui.sh` |
+| `script/docker/_tui_conf.sh` | INI validators + read/write for `setup_tui.sh` and `setup.sh` writeback |
+| `script/docker/_lib.sh` | Shared helpers (`_load_env`, `_compose`, `_compose_project`, ...) |
+| `script/docker/i18n.sh` | Shared language detection (`_detect_lang`, `_LANG`) |
+| `config/` | Container-internal shell configs (bashrc, tmux, terminator, pip) |
+| `setup.conf` | Single per-repo runtime configuration (image / build / deploy / gui / network / volumes) |
+| `test/smoke/` | Shared smoke tests + runtime assertion helpers (see below) |
+| `test/unit/` | Template self-tests (bats + kcov) |
+| `test/integration/` | Level-1 `init.sh` end-to-end tests |
+| `.hadolint.yaml` | Shared Hadolint rules |
+| `Makefile` | Repo entry (`make build`, `make run`, `make stop`, etc.) |
+| `Makefile.ci` | Template CI entry (`make test`, `make -f Makefile.ci lint`, etc.) |
+| `init.sh` | First-time symlink setup + new-repo scaffolding |
+| `upgrade.sh` | Subtree version upgrade |
+| `script/ci/ci.sh` | CI pipeline (local + remote) |
+| `dockerfile/Dockerfile.example` | Multi-stage Dockerfile template for new repos |
+| `dockerfile/Dockerfile.test-tools` | Pre-built lint/test tools image (shellcheck, hadolint, bats, bats-mock) |
+| `.github/workflows/` | Reusable CI workflows (build + release) |
 
-To use a different config, rebuild with:
+### Dockerfile stages (convention)
 
-```bash
-docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
+Downstream repos follow a standard multi-stage layout, defined in
+`dockerfile/Dockerfile.example`. All stages share a common base image
+parameterized by `ARG BASE_IMAGE`.
+
+| Stage | Parent | Purpose | Shipped? |
+|-------|--------|---------|----------|
+| `sys` | `${BASE_IMAGE}` | User/group, sudo, timezone, locale, APT mirror | intermediate |
+| `base` | `sys` | Development tools and language packages | intermediate |
+| `devel` | `base` | App-specific tools + `entrypoint.sh` + PlotJuggler (env repos) | **yes** (primary artifact) |
+| `test` | `devel` | Ephemeral: ShellCheck + Hadolint + Bats smoke (all from `test-tools:local`) | no (discarded) |
+| `runtime-base` (optional) | `sys` | Minimal runtime deps (sudo, tini) | intermediate |
+| `runtime` (optional) | `runtime-base` | Slim runtime image (application repos only) | yes, when enabled |
+
+Notes:
+- Repos that only ship a developer image (`env/*`) skip `runtime-base` /
+  `runtime` — the section stays commented in `Dockerfile.example`.
+- `test` is always built from `devel`, so runtime assertions inside
+  `test/smoke/<repo>_env.bats` see the same binaries / files a user would
+  find after `docker run ... <repo>:devel`.
+- `Dockerfile.test-tools` builds the lint/test tool bundle (bats + shellcheck +
+  hadolint). The downstream `test` stage consumes it through an `ARG
+  TEST_TOOLS_IMAGE` build arg — defaults to `test-tools:local` (matches the
+  local `./build.sh` flow that builds `Dockerfile.test-tools` into the host
+  Docker daemon). CI overrides it to
+  `ghcr.io/ycpss91255-docker/test-tools:vX.Y.Z` (pre-built multi-arch image
+  pushed by `.github/workflows/release-test-tools.yaml` on every tag) so
+  buildx pulls the arch-correct binaries over the wire instead of rebuilding
+  them per run, and sidesteps the cross-step image-store isolation that
+  `docker-container` buildx drivers enforce.
+
+### Smoke test helpers (for downstream repos)
+
+`test/smoke/test_helper.bash` (loaded by every smoke spec via
+`load "${BATS_TEST_DIRNAME}/test_helper"`) ships a small set of runtime
+assertion helpers. Downstream repos should prefer these over ad-hoc
+`[ -f ... ]` / `command -v` checks so failures produce decorated
+diagnostics pointing at the missing artifact.
+
+| Helper | Usage |
+|--------|-------|
+| `assert_cmd_installed <cmd>` | Fails unless `<cmd>` is on `PATH` |
+| `assert_cmd_runs <cmd> [flag]` | Fails unless `<cmd> <flag>` exits 0 (default flag: `--version`) |
+| `assert_file_exists <path>` | Fails unless `<path>` is a regular file |
+| `assert_dir_exists <path>` | Fails unless `<path>` is a directory |
+| `assert_file_owned_by <user> <path>` | Fails unless `<path>`'s owner is `<user>` |
+| `assert_pip_pkg <pkg>` | Fails unless `pip show <pkg>` returns 0 |
+
+### What stays in each repo (not shared)
+
+- `Dockerfile`
+- `compose.yaml`
+- `.env.example`
+- `script/entrypoint.sh`
+- `doc/` and `README.md`
+- Repo-specific smoke tests
+
+## Per-repo runtime configuration
+
+Each downstream repo drives its runtime config — GPU reservation, GUI
+env/volumes, network mode, extra volume mounts — through a single
+`setup.conf` INI file. `setup.sh` reads it (plus system detection) and
+regenerates both `.env` and `compose.yaml`; users never hand-edit those
+two derived artifacts.
+
+### One conf, six sections
+
+```
+[image]    rules = prefix:docker_, suffix:_ws, @default:unknown
+[build]    apt_mirror_ubuntu, apt_mirror_debian            # Dockerfile build args
+[deploy]   gpu_mode (auto|force|off), gpu_count, gpu_capabilities
+[gui]      mode (auto|force|off)
+[network]  mode (host|bridge|none), ipc, privileged
+[volumes]  mount_1 (workspace, auto-populated on first run)
+           mount_2..mount_N (extra host mounts; devices via /dev path)
 ```
 
-### YAML Format
+Template default lives at `template/setup.conf`; per-repo overrides go
+at `<repo>/setup.conf`. Section-level **replace** strategy: a section
+present in the per-repo file fully replaces the template's section;
+omitted sections fall back to template.
 
-Topic `type` uses the ROS 2 form `<package>/msg/<MsgName>`; service `type`
-uses the ROS 1 form `<package>/<SrvName>` (this asymmetry is intentional in
-`parameter_bridge`). Per-topic QoS is supported via the `qos` key; see
-[`bridge.yaml`](bridge.yaml) for the full set of tunables.
+On first `setup.sh` run (no per-repo setup.conf yet), the template file
+is copied to the repo and the detected workspace is written to
+`[volumes] mount_1`. Subsequent runs read `mount_1` as source of truth
+— clear it to opt out of mounting a workspace. Edit via:
+
+```bash
+./setup_tui.sh                      # interactive dialog/whiptail editor
+./setup_tui.sh volumes              # jump directly to one section
+./build.sh --setup            # launches setup_tui.sh under TTY; setup.sh otherwise
+./template/init.sh --gen-conf # plain copy of template/setup.conf to repo root
+```
+
+### When setup.sh runs
+
+`setup.sh` runs only when explicitly triggered — it is not re-run on
+every build or launch:
+
+- **`./template/init.sh`** runs it once after the skeleton lands
+- **`./build.sh --setup` / `./run.sh --setup`** (or `-s`) re-runs it on demand
+- **First-time bootstrap**: `./build.sh` / `./run.sh` auto-run setup.sh
+  the very first time (when `.env` is missing, e.g. after a fresh CI
+  clone) — no manual `--setup` needed
+
+### Drift detection
+
+`setup.sh` stores `SETUP_CONF_HASH`, `SETUP_GUI_DETECTED`, and
+`SETUP_TIMESTAMP` in `.env`. On every `./build.sh` / `./run.sh`,
+stored values are compared against the current setup.conf hash + system
+detection; a `[WARNING]` is printed (non-blocking) when any of the
+following changed since last setup:
+
+- `setup.conf` contents (conf hash)
+- GPU / GUI detection
+- `USER_UID` (user identity change)
+
+Re-run with `--setup` to regenerate `.env` + `compose.yaml`.
+
+### Derived artifacts (gitignored)
+
+- `.env` — runtime variable values + `SETUP_*` drift metadata
+- `compose.yaml` — full compose with baseline + conditional blocks
+
+Open `compose.yaml` anytime to inspect the repo's current effective
+configuration.
+
+## Quick Start
+
+### Adding to a new repo
+
+```bash
+# 1. Initialize empty repo (skip if you already have one with at least one commit)
+mkdir <repo_name> && cd <repo_name>
+git init
+git commit --allow-empty -m "chore: initial commit"
+
+# 2. Add subtree
+git subtree add --prefix=template \
+    https://github.com/ycpss91255-docker/template.git main --squash
+
+# 3. Initialize symlinks (one command; runs setup.sh under the hood)
+./template/init.sh
+```
+
+> `git subtree add` requires `HEAD` to exist. On a freshly `git init`-ed repo with no commits, it fails with `ambiguous argument 'HEAD'` and `working tree has modifications`. The empty commit creates `HEAD` so subtree can merge into it.
+
+### Updating
+
+```bash
+# Check if update available
+make upgrade-check
+
+# Upgrade to latest (subtree pull + version file + workflow tag)
+make upgrade
+
+# Or specify a version
+./template/upgrade.sh v0.3.0
+```
+
+`upgrade.sh` handles the full cycle in one go: `git subtree pull --squash`,
+post-pull integrity check (rolls back on destructive FF), `./template/init.sh`
+to resync root symlinks, and `sed` of `.github/workflows/main.yaml`'s
+`build-worker.yaml@vX.Y.Z` / `release-worker.yaml@vX.Y.Z` references. Don't
+subtree pull by hand — the sed + init steps are easy to forget.
+
+#### Automated version bumps (optional)
+
+Downstream repos can let Dependabot open PRs whenever a new `template` tag
+ships. Add `.github/dependabot.yml`:
 
 ```yaml
-topics:
-  - topic: /scan
-    type: sensor_msgs/msg/LaserScan
-    queue_size: 10
-    qos:
-      history: keep_last
-      depth: 5
-      reliability: best_effort
-      durability: volatile
-
-services_1_to_2:
-  - service: /add_two_ints
-    type: example_interfaces/AddTwoInts
-
-services_2_to_1:
-  - service: /get_parameters
-    type: rcl_interfaces/GetParameters
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
 ```
 
-## Demo
+Dependabot notices the `uses: ycpss91255-docker/template/...@vX.Y.Z` refs in
+`main.yaml`, compares against the template's latest tag, and files a PR. You
+still run `./template/upgrade.sh vX.Y.Z` locally to sync the subtree itself —
+Dependabot only bumps the workflow refs.
 
-Two-terminal end-to-end bridge demo using `std_msgs/String`. Both demos
-use the same pattern: a **server** terminal that owns `roscore` +
-`parameter_bridge` (loaded from the baked-in `/demo_bridge.yaml`), and a
-**client** terminal that just subscribes.
+## CI Reusable Workflows
 
-| Demo | Terminal 1 (server) | Terminal 2 (client) |
-|------|---------------------|---------------------|
-| A — ROS 1 → ROS 2 | `./exec.sh /ros1_server.sh` | `./exec.sh /ros2_client.sh` |
-| B — ROS 2 → ROS 1 | `./exec.sh /ros2_server.sh` | `./exec.sh /ros1_client.sh` |
+Repos replace local `build-worker.yaml` / `release-worker.yaml` with calls to this repo's reusable workflows:
 
-Steps (assuming the container is up via `./run.sh -d`):
+```yaml
+# .github/workflows/main.yaml
+jobs:
+  call-docker-build:
+    uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v1
+    with:
+      image_name: ros_noetic
+      build_args: |
+        ROS_DISTRO=noetic
+        ROS_TAG=ros-base
+        UBUNTU_CODENAME=focal
 
+  call-release:
+    needs: call-docker-build
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: ycpss91255-docker/template/.github/workflows/release-worker.yaml@v1
+    with:
+      archive_name_prefix: ros_noetic
+```
+
+### build-worker.yaml inputs
+
+| Input | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `image_name` | string | yes | - | Container image name |
+| `build_args` | string | no | `""` | Multi-line KEY=VALUE build args |
+| `build_runtime` | boolean | no | `true` | Whether to build runtime stage |
+
+### release-worker.yaml inputs
+
+| Input | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `archive_name_prefix` | string | yes | - | Archive name prefix |
+| `extra_files` | string | no | `""` | Space-separated extra files |
+
+## Running Template Tests
+
+Using `Makefile.ci` (from template root):
 ```bash
-# Terminal 1 (server) — pick one demo
-./exec.sh /ros1_server.sh    # Demo A
-./exec.sh /ros2_server.sh    # Demo B
-
-# Terminal 2 (client) — matching pair
-./exec.sh /ros2_client.sh    # Demo A
-./exec.sh /ros1_client.sh    # Demo B
+make -f Makefile.ci test        # Full CI (ShellCheck + Bats + Kcov) via docker compose
+make -f Makefile.ci lint        # ShellCheck only
+make -f Makefile.ci clean       # Remove coverage reports
+make help        # Show repo targets
+make -f Makefile.ci help  # Show CI targets
 ```
 
-Server scripts log every step (`[ros1_server] step N/5: ...`) so it's
-clear when `roscore` and `parameter_bridge` are up. Override the
-published string with `MESSAGE`:
-
+Or directly:
 ```bash
-./exec.sh env MESSAGE="hi from ROS 1" /ros1_server.sh
+./script/ci/ci.sh          # Full CI via docker compose
+./script/ci/ci.sh --ci     # Run inside container (used by compose)
 ```
 
-`Ctrl+C` on the server terminal tears down `parameter_bridge` and
-`roscore`; the client terminal then EOFs.
-
-## Architecture
-
-```mermaid
-graph TD
-    EXT1["bats/bats:latest"]
-    EXT2["alpine:latest"]
-    EXT3["ros:foxy-ros-base-focal"]
-    EXT4["snapshots.ros.org\n(noetic + foxy apt)"]
-
-    EXT1 --> bats-src["bats-src"]
-    EXT2 --> bats-ext["bats-extensions"]
-
-    EXT3 --> devel["devel\nros1 + ros2 + entrypoints\nCMD bash"]
-    EXT4 --> devel
-
-    devel --> runtime["runtime\nCMD ros2 run ros1_bridge parameter_bridge"]
-
-    bats-src --> test["test (ephemeral)\nsmoke tests, discarded after build"]
-    bats-ext --> test
-    devel --> test
-
-```
-
-## Smoke Tests
+## Tests
 
 See [TEST.md](doc/test/TEST.md) for details.
 
 ## Directory Structure
 
-```text
-ros1_bridge/
-├── compose.yaml                 # Docker Compose definition
-├── Dockerfile                   # Multi-stage build (devel + runtime + test)
-├── build.sh -> template/build.sh    # Symlink
-├── run.sh -> template/run.sh        # Symlink
-├── exec.sh -> template/exec.sh      # Symlink
-├── stop.sh -> template/stop.sh      # Symlink
-├── Makefile -> template/Makefile    # Symlink
-├── .template_version            # Template subtree version (v0.4.1)
-├── template/                    # Shared scripts, tests, CI (git subtree)
+```
+template/
+├── init.sh                           # Initialize repo (new or existing)
+├── upgrade.sh                        # Upgrade template subtree version
 ├── script/
-│   ├── entrypoint.sh            # Sources ROS 1 + ROS 2, loads bridge config
-│   ├── ros_entrypoint.sh        # ROS env only (osrf-compatible)
-│   ├── ros1_server.sh           # Demo A publisher (bootstraps roscore + bridge)
-│   ├── ros1_client.sh           # Demo B subscriber
-│   ├── ros2_server.sh           # Demo B publisher (bootstraps roscore + bridge)
-│   └── ros2_client.sh           # Demo A subscriber
-├── bridge.yaml                  # Default bridge configuration
-├── config/                      # Additional bridge configs
-│   ├── scan_bridge.yaml         # LaserScan bridge
-│   ├── release_bridge.yaml      # Camera + depth bridge
-│   └── demo_bridge.yaml         # Demo bidirectional std_msgs/String
-├── doc/                         # Translated READMEs
-│   ├── README.zh-TW.md          # Traditional Chinese
-│   ├── README.zh-CN.md          # Simplified Chinese
-│   └── README.ja.md             # Japanese
+│   ├── docker/                       # Docker operation scripts (symlinked by repos)
+│   │   ├── build.sh
+│   │   ├── run.sh
+│   │   ├── exec.sh
+│   │   ├── stop.sh
+│   │   ├── setup.sh                  # .env generator
+│   │   ├── _lib.sh                   # Shared helpers (_load_env, _compose, _compose_project)
+│   │   ├── i18n.sh                   # Shared language detection (_detect_lang, _LANG)
+│   │   └── Makefile
+│   └── ci/
+│       └── ci.sh                     # CI pipeline (local + remote)
+├── dockerfile/
+│   ├── Dockerfile.test-tools         # Pre-built lint/test tools image
+│   └── Dockerfile.example            # Dockerfile template for new repos (sys → base → devel → test → [runtime])
+├── setup.conf                        # Single runtime config (per-repo override mirror: <repo>/setup.conf)
+├── config/                           # Container-internal shell/tool configs
+│   ├── image_name.conf               # Default IMAGE_NAME detection rules
+│   ├── pip/
+│   │   ├── setup.sh
+│   │   └── requirements.txt
+│   └── shell/
+│       ├── bashrc
+│       ├── terminator/
+│       │   ├── setup.sh
+│       │   └── config
+│       └── tmux/
+│           ├── setup.sh
+│           └── tmux.conf
+├── test/
+│   ├── smoke/                        # Shared smoke tests + runtime assertion helpers
+│   │   ├── test_helper.bash          #  → assert_cmd_installed / _runs / file / dir / owned_by / pip_pkg
+│   │   ├── script_help.bats
+│   │   └── display_env.bats
+│   ├── unit/                         # Template self-tests (bats + kcov)
+│   │   ├── test_helper.bash
+│   │   ├── bashrc_spec.bats
+│   │   ├── ci_spec.bats              # ci.sh _install_deps
+│   │   ├── lib_spec.bats             # _lib.sh
+│   │   ├── pip_setup_spec.bats
+│   │   ├── setup_spec.bats
+│   │   ├── smoke_helper_spec.bats    # Runtime assertion helpers
+│   │   ├── template_spec.bats
+│   │   ├── terminator_config_spec.bats
+│   │   ├── terminator_setup_spec.bats
+│   │   ├── tmux_conf_spec.bats
+│   │   └── tmux_setup_spec.bats
+│   └── integration/
+│       └── init_new_repo_spec.bats   # Level-1 init.sh end-to-end
+├── Makefile.ci                       # Template CI entry (make test/lint/...)
+├── compose.yaml                      # Docker CI runner
+├── .hadolint.yaml                    # Shared Hadolint rules
+├── codecov.yml
 ├── .github/workflows/
-│   └── main.yaml                # CI/CD (calls template reusable workflows)
-└── test/smoke/                  # Bats environment tests (repo-specific)
-    └── ros_env.bats
+│   ├── self-test.yaml                # Template CI
+│   ├── build-worker.yaml             # Reusable build workflow
+│   └── release-worker.yaml           # Reusable release workflow
+├── doc/
+│   ├── readme/                       # README translations (zh-TW / zh-CN / ja)
+│   ├── test/TEST.md                  # Test catalog (spec tables)
+│   └── changelog/CHANGELOG.md        # Release notes
+├── .gitignore
+├── LICENSE
+└── README.md
 ```
