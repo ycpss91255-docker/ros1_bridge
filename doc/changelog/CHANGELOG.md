@@ -8,6 +8,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING — `bridge.yaml` is no longer tracked.** It is now a per-clone symlink the operator points at one of `config/*.yaml` before building. Demo configs split into two new files: `config/demo_services_1to2.yaml` (ROS 1 → ROS 2 services) and `config/demo_services_2to1.yaml` (ROS 2 → ROS 1 services). The old `bridge.yaml` (which mixed `/scan` topic + service demos and emitted "no conversion for type" errors at runtime because the type pairs aren't compiled into stock foxy `ros1_bridge`) is removed; its `/scan` content was already a duplicate of `config/scan_bridge.yaml`. Migration: `ln -sf config/<picked>.yaml bridge.yaml` before `./build.sh`. 4-language READMEs updated with the symlink table.
 - Upgrade `template/` subtree to [v0.11.0-rc1](https://github.com/ycpss91255-docker/template/releases/tag/v0.11.0-rc1). Closes Phase B of template #49 — `setup.sh` is now a git-style backend with `apply` / `check-drift` / `set` / `show` / `list` / `add` / `remove` / `reset` subcommands. Downstream-relevant points:
   - **BREAKING upstream**: `setup.sh` no-arg / flag-only invocation no longer aliases to `apply`. `build.sh` / `run.sh` / `setup_tui.sh` / `init.sh` were all updated in this template release to pass `apply` explicitly. ros1_bridge has no custom `setup.sh` callers, so no repo-side migration needed.
   - `main.yaml` pins workflows to `@v0.11.0-rc1` and passes `test_tools_version: v0.11.0-rc1` (GHCR multi-arch test-tools image is published).

@@ -86,15 +86,30 @@ docker run --rm --network=host ros1_bridge:runtime
 
 ## Bridge 設定
 
-預設 bridge 設定為 `bridge.yaml`。額外設定檔在 `config/` 目錄：
+`bridge.yaml` **不納入版本控管** — 從 `config/` 挑一份設定檔，建置前用
+symlink 指過去：
 
-| 檔案 | 說明 |
-|------|------|
-| `bridge.yaml` | 預設設定（LaserScan `/scan`） |
-| `config/scan_bridge.yaml` | LaserScan bridge |
-| `config/release_bridge.yaml` | Camera + depth topics bridge |
+```bash
+ln -sf config/scan_bridge.yaml bridge.yaml          # LaserScan
+ln -sf config/release_bridge.yaml bridge.yaml       # RealSense camera + depth
+ln -sf config/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter demo
+ln -sf config/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 service demo
+ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service demo
+```
 
-使用不同設定重新建置：
+| 設定檔 | Bridge 內容 |
+|--------|-------------|
+| `config/scan_bridge.yaml` | LaserScan `/scan`（sensor-data QoS） |
+| `config/release_bridge.yaml` | RealSense camera + depth topics |
+| `config/demo_bridge.yaml` | 雙向 `std_msgs/String` chatter（給 `ros{1,2}_server.sh` demo 使用） |
+| `config/demo_services_1to2.yaml` | ROS 1 service 暴露給 ROS 2（`/add_two_ints`、`/static_map`） |
+| `config/demo_services_2to1.yaml` | ROS 2 service 暴露給 ROS 1（`/get_parameters`） |
+
+> 兩個 service demo 需要的 type conversion 並未編進 stock foxy 的
+> `ros1_bridge`，runtime 會印 `no conversion for type ...`，除非 image
+> 重新編譯時把對應的 ROS 1 / ROS 2 packages 一起裝進去。
+
+不想動 symlink 也可以直接 build 時覆蓋：
 
 ```bash
 docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
@@ -105,7 +120,7 @@ docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
 Topic 的 `type` 使用 ROS 2 格式 `<package>/msg/<MsgName>`；service 的 `type`
 則使用 ROS 1 格式 `<package>/<SrvName>`（此不對稱為 `parameter_bridge` 的
 刻意設計）。Topic 可透過 `qos` 欄位設定 QoS，完整可調項目請見
-[`bridge.yaml`](../bridge.yaml)。
+[`config/`](../config/) 各設定檔。
 
 ```yaml
 topics:
@@ -208,11 +223,13 @@ ros1_bridge/
 │   ├── ros1_client.sh           # Demo B subscriber
 │   ├── ros2_server.sh           # Demo B publisher（自起 roscore + bridge）
 │   └── ros2_client.sh           # Demo A subscriber
-├── bridge.yaml                  # 預設 bridge 設定
-├── config/                      # 額外 bridge 設定
+├── bridge.yaml                  # Symlink 到 config/*.yaml 之一（gitignored，操作者自選）
+├── config/                      # Bridge 設定檔
 │   ├── scan_bridge.yaml         # LaserScan bridge
 │   ├── release_bridge.yaml      # Camera + depth bridge
-│   └── demo_bridge.yaml         # Demo 雙向 std_msgs/String
+│   ├── demo_bridge.yaml         # 雙向 std_msgs/String chatter
+│   ├── demo_services_1to2.yaml  # ROS 1 → ROS 2 service demo
+│   └── demo_services_2to1.yaml  # ROS 2 → ROS 1 service demo
 ├── doc/                         # 翻譯版 README
 │   ├── README.zh-TW.md          # 繁體中文
 │   ├── README.zh-CN.md          # 簡體中文

@@ -87,15 +87,31 @@ docker run --rm --network=host ros1_bridge:runtime
 
 ## Bridge Configuration
 
-The default bridge config is `bridge.yaml`. Additional configs are in `config/`:
+`bridge.yaml` is **not committed** — pick one of the configs in `config/`
+and symlink it before building:
 
-| File | Description |
-|------|-------------|
-| `bridge.yaml` | Default config (LaserScan `/scan`) |
-| `config/scan_bridge.yaml` | LaserScan bridge |
-| `config/release_bridge.yaml` | Camera + depth topics bridge |
+```bash
+ln -sf config/scan_bridge.yaml bridge.yaml          # LaserScan
+ln -sf config/release_bridge.yaml bridge.yaml       # RealSense camera + depth
+ln -sf config/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter demo
+ln -sf config/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 service demo
+ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service demo
+```
 
-To use a different config, rebuild with:
+| Config | Bridges |
+|--------|---------|
+| `config/scan_bridge.yaml` | LaserScan `/scan` (sensor-data QoS) |
+| `config/release_bridge.yaml` | RealSense camera + depth topics |
+| `config/demo_bridge.yaml` | Bidirectional `std_msgs/String` chatter (used by `ros{1,2}_server.sh` demos) |
+| `config/demo_services_1to2.yaml` | ROS 1 services exposed to ROS 2 (`/add_two_ints`, `/static_map`) |
+| `config/demo_services_2to1.yaml` | ROS 2 services exposed to ROS 1 (`/get_parameters`) |
+
+> The two service demos require type conversions that are not compiled
+> into the stock foxy `ros1_bridge` build — they will print `no
+> conversion for type ...` at runtime unless the image is rebuilt with
+> the matching ROS 1 / ROS 2 packages.
+
+Override at build time without changing the symlink:
 
 ```bash
 docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
@@ -106,7 +122,7 @@ docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
 Topic `type` uses the ROS 2 form `<package>/msg/<MsgName>`; service `type`
 uses the ROS 1 form `<package>/<SrvName>` (this asymmetry is intentional in
 `parameter_bridge`). Per-topic QoS is supported via the `qos` key; see
-[`bridge.yaml`](bridge.yaml) for the full set of tunables.
+the files in [`config/`](config/) for the full set of tunables.
 
 ```yaml
 topics:
@@ -210,11 +226,13 @@ ros1_bridge/
 │   ├── ros1_client.sh           # Demo B subscriber
 │   ├── ros2_server.sh           # Demo B publisher (bootstraps roscore + bridge)
 │   └── ros2_client.sh           # Demo A subscriber
-├── bridge.yaml                  # Default bridge configuration
-├── config/                      # Additional bridge configs
+├── bridge.yaml                  # Symlink to one of config/*.yaml (gitignored, operator picks)
+├── config/                      # Bridge configs
 │   ├── scan_bridge.yaml         # LaserScan bridge
-│   ├── release_bridge.yaml      # Camera + depth bridge
-│   └── demo_bridge.yaml         # Demo bidirectional std_msgs/String
+│   ├── release_bridge.yaml     # Camera + depth bridge
+│   ├── demo_bridge.yaml         # Bidirectional std_msgs/String chatter
+│   ├── demo_services_1to2.yaml  # ROS 1 → ROS 2 service demo
+│   └── demo_services_2to1.yaml  # ROS 2 → ROS 1 service demo
 ├── doc/                         # Translated READMEs
 │   ├── README.zh-TW.md          # Traditional Chinese
 │   ├── README.zh-CN.md          # Simplified Chinese

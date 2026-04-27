@@ -2,3 +2,6 @@
 compose.yaml
 coverage/
 .Dockerfile.generated
+# bridge.yaml is a per-clone symlink chosen by the operator
+# (see README "Bridge config" section); not tracked.
+bridge.yaml
