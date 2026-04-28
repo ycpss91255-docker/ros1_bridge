@@ -18,12 +18,12 @@ permissions:
 
 jobs:
   call-docker-build:
-    uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v0.11.0-rc1
+    uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v0.11.0
     with:
       image_name: ros1_bridge
       build_runtime: true
       platforms: linux/amd64,linux/arm64
-      test_tools_version: v0.11.0-rc1
+      test_tools_version: v0.11.0
       # bridge.yaml is gitignored (per-clone symlink chosen by operator;
       # see README "Bridge Configuration"). CI has no symlink, so override
       # the Dockerfile ARG default to point at one of the tracked configs.
@@ -33,6 +33,6 @@ jobs:
   call-release:
     needs: call-docker-build
     if: startsWith(github.ref, 'refs/tags/')
-    uses: ycpss91255-docker/template/.github/workflows/release-worker.yaml@v0.11.0-rc1
+    uses: ycpss91255-docker/template/.github/workflows/release-worker.yaml@v0.11.0
     with:
       archive_name_prefix: ros1_bridge
