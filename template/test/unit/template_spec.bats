@@ -56,6 +56,17 @@ setup() {
   assert_success
 }
 
+@test "Makefile upgrade target uses ./template/upgrade.sh (not ./template/script/upgrade.sh)" {
+  # Regression: the Makefile symlinked into every downstream repo has
+  # called `./template/script/upgrade.sh` since v0.10.x, but upgrade.sh
+  # actually lives at template root (`./template/upgrade.sh`). The
+  # broken target produced "No such file or directory" on `make upgrade`
+  # / `make upgrade-check` for fresh consumer repos.
+  run grep -E '^[[:space:]]+\./template/upgrade\.sh' /source/script/docker/Makefile
+  assert_success
+  refute_output --partial "./template/script/upgrade.sh"
+}
+
 @test "Makefile.ci exists (template CI)" {
   assert [ -f /source/Makefile.ci ]
 }
@@ -67,6 +78,19 @@ setup() {
 
 @test "Makefile.ci has lint target" {
   run grep -E '^lint:' /source/Makefile.ci
+  assert_success
+}
+
+@test "Makefile.ci has upgrade target" {
+  run grep -E '^upgrade:' /source/Makefile.ci
+  assert_success
+}
+
+@test "Makefile.ci upgrade target forwards optional VERSION variable" {
+  # `make -f Makefile.ci upgrade [VERSION=vX.Y.Z]` is the documented entry
+  # point. The recipe must pass $(VERSION) to ./upgrade.sh so an empty
+  # VERSION resolves to "latest" and a set VERSION pins a specific tag.
+  run grep -E '^[[:space:]]+\./upgrade\.sh \$\(VERSION\)' /source/Makefile.ci
   assert_success
 }
 
