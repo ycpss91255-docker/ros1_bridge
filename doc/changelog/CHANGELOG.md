@@ -8,6 +8,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- **BREAKING: `setup.conf.local` collapsed back into `<repo>/setup.conf`** as part of upgrading template subtree to [v0.16.0](https://github.com/ycpss91255-docker/template/releases/tag/v0.16.0) (template #201). Pre-v0.16.0 the per-repo override lived at `setup.conf.local` (committed) while `setup.conf` was a gitignored derived snapshot. Post-v0.16.0 there is a single committed `<repo>/setup.conf` user-override file. Migration: ran `.claude/scripts/migrate-local-to-setupconf.sh` upstream, which renamed `setup.conf.local` to `setup.conf` in place and dropped the obsolete `setup.conf` line from `.gitignore`. The v0.16.0 template subtree pull then re-syncs `.gitignore` (adds `setup.conf.local` so legacy files don't drift back). Other v0.16.0 highlights:
+  - `setup.sh` bootstrap fix: fresh `apply` against an empty repo now correctly emits the workspace mount line in `compose.yaml` (template #201 regression test).
+  - new `[additional_contexts]` section in `setup.conf` for compose's `build.additional_contexts:` (template #199). Empty in this repo, no behavior change.
+  - per-section parameter coverage tests added upstream (template #202).
 - Promote `template/` subtree pin from `v0.11.0-rc1` to [v0.11.0](https://github.com/ycpss91255-docker/template/releases/tag/v0.11.0). No code delta between rc1 and stable in the template subtree (rc1 was the validation tag); `main.yaml` now pins workflows to `@v0.11.0` and passes `test_tools_version: v0.11.0`.
 
 ## [v1.6.0] - 2026-04-27
