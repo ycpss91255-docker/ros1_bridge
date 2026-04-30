@@ -15,3 +15,5 @@ CLAUDE.md
 .env.bak
 setup.conf.bak
 
+
+setup.conf.local
