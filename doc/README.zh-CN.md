@@ -2,7 +2,7 @@
 
 **[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
-> **TL;DR** — 以 `ros:foxy-ros-base-focal` 加 ROS 1 snapshot apt repo 自建的 ROS 1/2 bridge 容器。通过 `parameter_bridge` 桥接 ROS 1 (Noetic) 与 ROS 2 (Foxy) topics。base image 为 multi-arch，支持 Jetson (arm64)。
+> **TL;DR** — ROS 1/2 bridge 容器，**同时支持 Humble + Jazzy**，base image 为 `ros:${ROS2_DISTRO}-ros-base`，**Noetic `ros_comm` 从源码构建** + **`ros1_bridge` 从源码构建**（因为 Foxy / Noetic apt 在 focal 之外已经没有包）。通过 `ARG ROS2_DISTRO=humble|jazzy` 选择目标。base image 为 multi-arch，支持 Jetson (arm64)。完整 migration rationale 见 [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53)。
 >
 > ```bash
 > ./build.sh && ./run.sh
@@ -24,7 +24,8 @@
 
 ## 特性
 
-- **自建 bridge 镜像**：以 `ros:foxy-ros-base-focal` 为底，通过 ROS 1 snapshot apt repo 并装 ROS 1 Noetic 与 ROS 2 Foxy
+- **ROS 1 + bridge 从源码构建**：`ros:${ROS2_DISTRO}-ros-base` 为 base；Noetic `ros_comm` 通过 `rosinstall_generator` 抓 tarball 构建到 `/opt/ros/noetic/`；`ros1_bridge` 从 `ros2/ros1_bridge` master 构建到 `/bridge_ws/install/`。同时支持 Humble (jammy) 与 Jazzy (noble)，通过 `ARG ROS2_DISTRO` matrix 选择。
+- **为什么从源码构建**：Open Robotics 从未在 focal 以外发布 `ros-noetic-*` debs，且 `ros-jazzy-ros1-bridge` 不存在。`humble|jazzy ↔ foxy ↔ noetic` 的 chained DDS 变通方案实测因 Fast-DDS 大版本差异 + REP-2011 type-hash 不匹配而失败，完整调查见 [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53)。
 - **Jetson (arm64) 支持**：base image 为 multi-arch（不同于仅 amd64 的 `osrf/ros:foxy-ros1-bridge`）
 - **Parameter bridge**：通过 YAML 设置可配置的 topic 桥接
 - **devel / runtime 分离**：`devel` stage 默认进 shell（`CMD bash`）方便开发调试；`runtime` stage 自动运行 `parameter_bridge` 读取 `/bridge.yaml`
@@ -105,9 +106,9 @@ ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service de
 | `config/demo_services_1to2.yaml` | ROS 1 service 暴露给 ROS 2（`/add_two_ints`、`/static_map`） |
 | `config/demo_services_2to1.yaml` | ROS 2 service 暴露给 ROS 1（`/get_parameters`） |
 
-> 两个 service demo 需要的 type conversion 没编进 stock foxy 的
-> `ros1_bridge`，runtime 会打印 `no conversion for type ...`，除非 image
-> 重新编译时把对应的 ROS 1 / ROS 2 packages 一起装进去。
+> 两个 service demo 需要的 type conversion 没编进这里从源码构建的
+> `ros1_bridge`，runtime 会打印 `no conversion for type ...`，除非在 `colcon
+> build` 步骤把对应的 ROS 1 / ROS 2 packages 加进去重新编译 image。
 
 不想改 symlink 也可以直接 build 时覆盖：
 
@@ -180,21 +181,18 @@ client terminal 接着就 EOF。
 
 ```mermaid
 graph TD
-    EXT1["bats/bats:latest"]
-    EXT2["alpine:latest"]
-    EXT3["ros:foxy-ros-base-focal"]
-    EXT4["snapshots.ros.org\n(noetic + foxy apt)"]
+    EXT1["test-tools image\n(bats + shellcheck + hadolint)"]
+    EXT3["ros:${ROS2_DISTRO}-ros-base\n(humble | jazzy, multi-arch)"]
+    EXT4["github.com/ros/...\n(noetic ros_comm tarballs)"]
+    EXT5["github.com/ros2/ros1_bridge\n(master)"]
 
-    EXT1 --> bats-src["bats-src"]
-    EXT2 --> bats-ext["bats-extensions"]
-
-    EXT3 --> devel["devel\nros1 + ros2 + entrypoints\nCMD bash"]
+    EXT3 --> devel["devel\n从源码构建 /opt/ros/noetic + /bridge_ws\nCMD bash"]
     EXT4 --> devel
+    EXT5 --> devel
 
     devel --> runtime["runtime\nCMD ros2 run ros1_bridge parameter_bridge"]
 
-    bats-src --> test["test临时性\nsmoke/ 执行后即丢"]
-    bats-ext --> test
+    EXT1 --> test["test (临时性)\nshellcheck + hadolint + bats smoke"]
     devel --> test
 
 ```
@@ -208,7 +206,8 @@ graph TD
 ```text
 ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定义
-├── Dockerfile                   # 多阶段构建（devel + runtime + test）
+├── Dockerfile                   # 多阶段构建（devel + runtime + test）；source-builds Noetic + ros1_bridge
+├── setup.conf                   # Repo override；[build] arg_4=ROS2_DISTRO 选 humble|jazzy
 ├── build.sh -> template/build.sh    # Symlink
 ├── run.sh -> template/run.sh        # Symlink
 ├── exec.sh -> template/exec.sh      # Symlink

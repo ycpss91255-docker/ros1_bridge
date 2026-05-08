@@ -44,11 +44,17 @@ ros1_env() {
 }
 
 # Source ROS 1 then ROS 2 (for parameter_bridge — needs both).
+# ros1_bridge is built from source into /bridge_ws (not installed under
+# /opt/ros/${ROS2_DISTRO}/share), so its overlay must be sourced too.
 both_env() {
     ros1_env
     unset ROS_DISTRO
     # shellcheck source=/dev/null
     source "/opt/ros/${ROS2_DISTRO}/setup.bash" >/dev/null 2>&1
+    if [[ -f /bridge_ws/install/setup.bash ]]; then
+        # shellcheck source=/dev/null
+        source /bridge_ws/install/setup.bash >/dev/null 2>&1
+    fi
 }
 
 cleanup() {
