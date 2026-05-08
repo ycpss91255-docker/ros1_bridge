@@ -1,17 +1,17 @@
 # ROS 1 Bridge Docker Environment
 
-**[English](README.md)** | **[繁體中文](doc/README.zh-TW.md)** | **[简体中文](doc/README.zh-CN.md)** | **[日本語](doc/README.ja.md)**
+[![CI](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml/badge.svg)](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml)
 
-> **TL;DR** — ROS 1/2 bridge container with **dual Humble + Jazzy targets** built from `ros:${ROS2_DISTRO}-ros-base` plus **source-built Noetic `ros_comm`** + **source-built `ros1_bridge`** (since Foxy / Noetic apt is no longer available outside focal). Select target via `ARG ROS2_DISTRO=humble|jazzy`. Multi-arch base supports Jetson (arm64). See [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) for the full migration rationale.
->
-> ```bash
-> ./build.sh && ./run.sh           # default ROS2_DISTRO=humble (set via setup.conf [build] arg_4)
-> ```
+ROS 1/2 bridge container with dual Humble + Jazzy targets — `ros:${ROS2_DISTRO}-ros-base` plus source-built Noetic `ros_comm` and `ros1_bridge`. Multi-arch (amd64 / arm64).
+
+**[English](README.md)** | **[繁體中文](doc/README.zh-TW.md)** | **[简体中文](doc/README.zh-CN.md)** | **[日本語](doc/README.ja.md)**
 
 ---
 
 ## Table of Contents
 
+- [TL;DR](#tldr)
+- [Overview](#overview)
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [Switch ROS 2 distro](#switch-ros-2-distro)
@@ -19,14 +19,33 @@
 - [Bridge Configuration](#bridge-configuration)
 - [Demo](#demo)
 - [Architecture](#architecture)
+- [Smoke Tests](#smoke-tests)
 - [Directory Structure](#directory-structure)
 
 ---
 
+## TL;DR
+
+```bash
+./build.sh && ./run.sh           # default ROS2_DISTRO=humble (set via setup.conf [build] arg_4)
+```
+
+## Overview
+
+The classic `osrf/ros:foxy-ros1-bridge` distribution path is broken on
+modern hosts: Open Robotics never published `ros-noetic-*` debs outside
+focal, and `ros-jazzy-ros1-bridge` does not exist. The chained DDS
+workaround (`humble|jazzy ↔ foxy ↔ noetic`) was empirically ruled out
+due to Fast-DDS major-version skew + REP-2011 type-hash mismatches.
+This repo replaces it with a single Dockerfile that source-builds
+Noetic `ros_comm` + `ros1_bridge` on top of `ros:${ROS2_DISTRO}-ros-base`,
+selectable via `ARG ROS2_DISTRO=humble|jazzy`, multi-arch (amd64 + arm64
+including Jetson). See [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53)
+for the full migration rationale.
+
 ## Features
 
 - **Source-built ROS 1 + bridge**: `ros:${ROS2_DISTRO}-ros-base` base; Noetic `ros_comm` built from `rosinstall_generator` tarballs into `/opt/ros/noetic/`; `ros1_bridge` built from `ros2/ros1_bridge` master into `/bridge_ws/install/`. Both Humble (jammy) and Jazzy (noble) supported via `ARG ROS2_DISTRO` matrix.
-- **Why source-build**: Open Robotics never published `ros-noetic-*` debs outside focal, and `ros-jazzy-ros1-bridge` does not exist. The chained DDS workaround (`humble|jazzy ↔ foxy ↔ noetic`) was empirically ruled out due to Fast-DDS major version skew + REP-2011 type-hash mismatches — see [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) for the full investigation.
 - **Jetson (arm64) support**: multi-arch base image (unlike `osrf/ros:foxy-ros1-bridge`, which is amd64 only)
 - **Parameter bridge**: configurable topic bridging via YAML
 - **builder / devel / runtime split**: `builder` stage source-builds Noetic + `ros1_bridge` keeping the source trees in `/noetic_ws/src/` and `/bridge_ws/src/ros1_bridge/`; `devel` (`FROM builder`) keeps that source for in-container rebuild / debug + drops into a shell (`CMD bash`); `runtime` (`FROM ${IMAGE}` — NOT inheriting devel) is lean, only `COPY --from=builder` the install trees + auto-starts `parameter_bridge` from `/bridge.yaml`
@@ -246,13 +265,12 @@ ros1_bridge/
 ├── compose.yaml                 # Docker Compose definition
 ├── Dockerfile                   # Multi-stage build (devel + runtime + test); source-builds Noetic + ros1_bridge
 ├── setup.conf                   # Repo override; [build] arg_4=ROS2_DISTRO selects humble|jazzy
-├── build.sh -> template/build.sh    # Symlink
-├── run.sh -> template/run.sh        # Symlink
-├── exec.sh -> template/exec.sh      # Symlink
-├── stop.sh -> template/stop.sh      # Symlink
-├── Makefile -> template/Makefile    # Symlink
-├── .template_version            # Template subtree version (v0.4.1)
-├── template/                    # Shared scripts, tests, CI (git subtree)
+├── build.sh -> template/script/docker/build.sh    # Symlink
+├── run.sh -> template/script/docker/run.sh        # Symlink
+├── exec.sh -> template/script/docker/exec.sh      # Symlink
+├── stop.sh -> template/script/docker/stop.sh      # Symlink
+├── Makefile -> template/script/docker/Makefile    # Symlink
+├── template/                    # Shared scripts, tests, CI (git subtree; version pinned in template/.version)
 ├── script/
 │   ├── entrypoint.sh            # Sources ROS 1 + ROS 2, loads bridge config
 │   ├── ros_entrypoint.sh        # ROS env only (osrf-compatible)
