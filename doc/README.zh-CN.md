@@ -2,22 +2,16 @@
 
 [![CI](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml/badge.svg)](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml) [![License](https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square)](../LICENSE)
 
-**[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
+ROS 1/2 bridge 容器，**Humble + Jazzy 双 target** — `ros:${ROS2_DISTRO}-ros-base` 加 source-build Noetic `ros_comm` 与 `ros1_bridge`。Multi-arch（amd64 / arm64）。
 
-> **TL;DR** — ROS 1/2 bridge 容器，**同时支持 Humble + Jazzy**，base image 为 `ros:${ROS2_DISTRO}-ros-base`，**Noetic `ros_comm` 从源码构建** + **`ros1_bridge` 从源码构建**（因为 Foxy / Noetic apt 在 focal 之外已经没有包）。通过 `ARG ROS2_DISTRO=humble|jazzy` 选择目标。base image 为 multi-arch，支持 Jetson (arm64)。完整 migration rationale 见 [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53)。
->
-> ```bash
-> ln -sf config/demo_bridge.yaml bridge.yaml   # 挑一份 bridge 配置（gitignored、每个 clone 各自选）。略过则走 demo fallback。
-> ./build.sh && ./run.sh                       # 默认 ROS2_DISTRO=humble（在 setup.conf [build] arg_4 设置）
-> ```
->
-> 略过 `ln -sf` 也没问题 — Dockerfile 会自动 fallback 到
-> `config/demo_bridge.yaml`。完整可选配置见 [Bridge 设置](#bridge-设置)。
+**[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
 ---
 
 ## 目录
 
+- [TL;DR](#tldr)
+- [Overview](#overview)
 - [特性](#特性)
 - [快速开始](#快速开始)
 - [切换 ROS 2 distro](#切换-ros-2-distro)
@@ -25,19 +19,42 @@
 - [Bridge 设置](#bridge-设置)
 - [Demo](#demo)
 - [架构](#架构)
+- [Smoke Tests](#smoke-tests)
 - [目录结构](#目录结构)
 
 ---
 
+## TL;DR
+
+```bash
+ln -sf config/demo_bridge.yaml bridge.yaml   # 挑一份 bridge 配置（gitignored、每个 clone 各自选）。略过则走 demo fallback。
+./build.sh && ./run.sh                       # 默认 ROS2_DISTRO=humble（在 setup.conf [build] arg_4 设置）
+```
+
+略过 `ln -sf` 也没问题 — Dockerfile 会自动 fallback 到
+`config/demo_bridge.yaml`（修 [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)）。
+完整可选配置见 [Bridge 设置](#bridge-设置)。
+
+## Overview
+
+`osrf/ros:foxy-ros1-bridge` 的传统发行路径在现代 host 上已经行不通：
+Open Robotics 从未在 focal 之外发布 `ros-noetic-*` debs，且
+`ros-jazzy-ros1-bridge` 也不存在。`humble|jazzy ↔ foxy ↔ noetic`
+的 chained DDS 变通方案实测因 Fast-DDS 大版本差异 + REP-2011 type-hash
+不匹配而失败。本 repo 改成单一 Dockerfile，在
+`ros:${ROS2_DISTRO}-ros-base` 之上 source-build Noetic `ros_comm` +
+`ros1_bridge`，通过 `ARG ROS2_DISTRO=humble|jazzy` 选择目标，
+multi-arch（amd64 + arm64 含 Jetson）。完整 migration rationale 见
+[#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53)。
+
 ## 特性
 
 - **ROS 1 + bridge 从源码构建**：`ros:${ROS2_DISTRO}-ros-base` 为 base；Noetic `ros_comm` 通过 `rosinstall_generator` 抓 tarball 构建到 `/opt/ros/noetic/`；`ros1_bridge` 从 `ros2/ros1_bridge` master 构建到 `/bridge_ws/install/`。同时支持 Humble (jammy) 与 Jazzy (noble)，通过 `ARG ROS2_DISTRO` matrix 选择。
-- **为什么从源码构建**：Open Robotics 从未在 focal 以外发布 `ros-noetic-*` debs，且 `ros-jazzy-ros1-bridge` 不存在。`humble|jazzy ↔ foxy ↔ noetic` 的 chained DDS 变通方案实测因 Fast-DDS 大版本差异 + REP-2011 type-hash 不匹配而失败，完整调查见 [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53)。
 - **Jetson (arm64) 支持**：base image 为 multi-arch（不同于仅 amd64 的 `osrf/ros:foxy-ros1-bridge`）
 - **Parameter bridge**：通过 YAML 设置可配置的 topic 桥接
-- **builder / devel / runtime 分离**:`builder` stage 从源码构建 Noetic + `ros1_bridge` 并**保留 source 目录**(`/noetic_ws/src/` 和 `/bridge_ws/src/ros1_bridge/`);`devel` (`FROM builder`) 继承 source 供容器内 rebuild / debug,默认进 shell (`CMD bash`);`runtime` (`FROM ${IMAGE}`,**不继承 devel**) 为精简版,仅 `COPY --from=builder` install 树,自动运行 `parameter_bridge` 读取 `/bridge.yaml`
+- **builder / devel / runtime 分离**：`builder` stage 从源码构建 Noetic + `ros1_bridge` 并**保留 source 目录**（`/noetic_ws/src/` 和 `/bridge_ws/src/ros1_bridge/`）；`devel`（`FROM builder`）继承 source 供容器内 rebuild / debug，默认进 shell（`CMD bash`）；`runtime`（`FROM ${IMAGE}`，**不继承 devel**）为精简版，仅 `COPY --from=builder` install 树，自动运行 `parameter_bridge` 读取 `/bridge.yaml`
 - **Docker Compose**：一个 `compose.yaml` 管理构建与执行
-- **示例设置**：内含 scan 和 camera bridge 设置文件
+- **示例配置**：内含 scan 和 camera bridge 配置文件
 
 ## 快速开始
 
@@ -58,34 +75,34 @@ ln -sf config/demo_bridge.yaml bridge.yaml
 
 ## 切换 ROS 2 distro
 
-默认 `humble`(jammy 22.04)。要切到 `jazzy`(noble 24.04):
+默认 `humble`（jammy 22.04）。要切到 `jazzy`（noble 24.04）：
 
-**方式 1(推荐):编辑 `setup.conf`**。改 `[build]` section 的 `arg_4`:
+**方式 1（推荐）：编辑 `setup.conf`**。改 `[build]` section 的 `arg_4`：
 
 ```ini
 [build]
 arg_4 = ROS2_DISTRO=jazzy
 ```
 
-然后 rebuild。`setup.sh` 会把 `setup.conf` hash 进 `.env` 的 `SETUP_CONF_HASH`,
+然后 rebuild。`setup.sh` 会把 `setup.conf` hash 进 `.env` 的 `SETUP_CONF_HASH`，
 所以 `./build.sh` / `./run.sh` 会自动检测变动并重新生成 `.env` + `compose.yaml`。
-image tag(`yunchien/ros1_bridge:devel` 等)跨 distro 不变,切换 = 原地 rebuild。
+image tag（`yunchien/ros1_bridge:devel` 等）跨 distro 不变，切换 = 原地 rebuild。
 
 ```bash
 ./build.sh           # 从 setup.conf 抓新的 ROS2_DISTRO
 ./run.sh
 ```
 
-**方式 2:一次性 `--build-arg`(直接 docker build)**。会绕开 `./build.sh`,
-不会更新 `.env` / `compose.yaml`:
+**方式 2：一次性 `--build-arg`（直接 docker build）**。会绕开 `./build.sh`，
+不会更新 `.env` / `compose.yaml`：
 
 ```bash
 docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
 ```
 
-CI 通过 `.github/workflows/main.yaml` 的 matrix 同时 build 两个 distro,所以
-setup.conf 改动只影响本地 build;发布到 `ghcr.io/ycpss91255-docker/ros1_bridge-{humble,jazzy}`
-的 image 跟 setup.conf 无关,永远由 matrix 决定。
+CI 通过 `.github/workflows/main.yaml` 的 matrix 同时 build 两个 distro，所以
+setup.conf 改动只影响本地 build；发布到 `ghcr.io/ycpss91255-docker/ros1_bridge-{humble,jazzy}`
+的 image 跟 setup.conf 无关，永远由 matrix 决定。
 
 ## 使用方式
 
@@ -95,7 +112,7 @@ setup.conf 改动只影响本地 build;发布到 `ghcr.io/ycpss91255-docker/ros1
 ./build.sh                       # 构建 devel（默认）
 ./build.sh test                  # 构建含 smoke test
 
-docker compose build devel     # 等效命令
+docker compose build devel       # 等效命令
 ```
 
 ### 执行
@@ -188,15 +205,15 @@ services_2_to_1:
 ## Demo
 
 两个 terminal 跑 end-to-end bridge demo，消息类型 `std_msgs/String`。
-规则对称:**server** terminal 负责起 `roscore` + `parameter_bridge`
-(读 build 时烤进 image 的 `/demo_bridge.yaml`)，**client** terminal 只订阅。
+规则对称：**server** terminal 负责起 `roscore` + `parameter_bridge`
+（读 build 时烤进 image 的 `/demo_bridge.yaml`），**client** terminal 只订阅。
 
 | Demo | Terminal 1 (server) | Terminal 2 (client) |
 |------|---------------------|---------------------|
 | A — ROS 1 → ROS 2 | `./exec.sh /ros1_server.sh` | `./exec.sh /ros2_client.sh` |
 | B — ROS 2 → ROS 1 | `./exec.sh /ros2_server.sh` | `./exec.sh /ros1_client.sh` |
 
-实际操作(假设容器已用 `./run.sh -d` 起好):
+实际操作（假设容器已用 `./run.sh -d` 起好）：
 
 ```bash
 # Terminal 1 (server) — 二选一
@@ -208,9 +225,9 @@ services_2_to_1:
 ./exec.sh /ros1_client.sh    # Demo B
 ```
 
-Server 脚本每一步都打印进度(`[ros1_server] step N/5: ...`)，所以
+Server 脚本每一步都打印进度（`[ros1_server] step N/5: ...`），所以
 `roscore` 跟 `parameter_bridge` 何时就绪一目了然。要换消息字串用
-`MESSAGE` 环境变量:
+`MESSAGE` 环境变量：
 
 ```bash
 ./exec.sh env MESSAGE="hi from ROS 1" /ros1_server.sh
@@ -232,9 +249,9 @@ graph TD
     EXT4 --> builder
     EXT5 --> builder
 
-    builder --> devel["devel = builder + scripts\nCMD bash;source 可供 rebuild"]
+    builder --> devel["devel = builder + scripts\nCMD bash；source 可供 rebuild"]
 
-    EXT3 --> runtime["runtime\n精简:COPY --from=builder install 树\nCMD ros2 run ros1_bridge parameter_bridge"]
+    EXT3 --> runtime["runtime\n精简：COPY --from=builder install 树\nCMD ros2 run ros1_bridge parameter_bridge"]
     builder -.->|COPY --from=builder /opt/ros/noetic + /bridge_ws/install| runtime
 
     EXT1 --> test["test (临时性)\nshellcheck + hadolint + bats smoke"]
@@ -253,13 +270,12 @@ ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定义
 ├── Dockerfile                   # 多阶段构建（devel + runtime + test）；source-builds Noetic + ros1_bridge
 ├── setup.conf                   # Repo override；[build] arg_4=ROS2_DISTRO 选 humble|jazzy
-├── build.sh -> template/build.sh    # Symlink
-├── run.sh -> template/run.sh        # Symlink
-├── exec.sh -> template/exec.sh      # Symlink
-├── stop.sh -> template/stop.sh      # Symlink
-├── Makefile -> template/Makefile    # Symlink
-├── .template_version            # Template subtree 版本（v0.4.1）
-├── template/                    # 共用脚本、测试、CI（git subtree）
+├── build.sh -> template/script/docker/build.sh    # Symlink
+├── run.sh -> template/script/docker/run.sh        # Symlink
+├── exec.sh -> template/script/docker/exec.sh      # Symlink
+├── stop.sh -> template/script/docker/stop.sh      # Symlink
+├── Makefile -> template/script/docker/Makefile    # Symlink
+├── template/                    # 共用脚本、测试、CI（git subtree；版本记录在 template/.version）
 ├── script/
 │   ├── entrypoint.sh            # Source ROS 1 + ROS 2，载入 bridge 设置
 │   ├── ros_entrypoint.sh        # 仅 source ROS 环境（兼容 osrf）

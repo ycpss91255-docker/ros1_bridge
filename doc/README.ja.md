@@ -2,23 +2,16 @@
 
 [![CI](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml/badge.svg)](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml) [![License](https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square)](../LICENSE)
 
-**[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
+ROS 1/2 ブリッジコンテナ、**Humble + Jazzy のデュアルターゲット** — `ros:${ROS2_DISTRO}-ros-base` をベースに Noetic `ros_comm` と `ros1_bridge` をソースビルド。Multi-arch（amd64 / arm64）。
 
-> **TL;DR** — ROS 1/2 ブリッジコンテナ。**Humble + Jazzy のデュアルターゲット**で、ベースイメージは `ros:${ROS2_DISTRO}-ros-base`、**Noetic `ros_comm` をソースビルド**＋**`ros1_bridge` をソースビルド**します（Foxy / Noetic apt は focal 以外で提供されていないため）。`ARG ROS2_DISTRO=humble|jazzy` でターゲットを選択。base image は multi-arch のため Jetson (arm64) に対応。詳細な migration rationale は [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) を参照。
->
-> ```bash
-> ln -sf config/demo_bridge.yaml bridge.yaml   # ブリッジ設定を選択（gitignored、clone 単位）。スキップしても demo にフォールバック。
-> ./build.sh && ./run.sh                       # デフォルト ROS2_DISTRO=humble（setup.conf [build] arg_4 で設定）
-> ```
->
-> `ln -sf` ステップをスキップしても問題ありません — Dockerfile が
-> 自動的に `config/demo_bridge.yaml` にフォールバックします。利用可能な
-> 設定一覧は [ブリッジ設定](#ブリッジ設定) を参照。
+**[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
 ---
 
 ## 目次
 
+- [TL;DR](#tldr)
+- [Overview](#overview)
 - [特徴](#特徴)
 - [クイックスタート](#クイックスタート)
 - [ROS 2 distro の切り替え](#ros-2-distro-の切り替え)
@@ -26,17 +19,43 @@
 - [ブリッジ設定](#ブリッジ設定)
 - [Demo](#demo)
 - [アーキテクチャ](#アーキテクチャ)
+- [Smoke Tests](#smoke-tests)
 - [ディレクトリ構成](#ディレクトリ構成)
 
 ---
 
+## TL;DR
+
+```bash
+ln -sf config/demo_bridge.yaml bridge.yaml   # ブリッジ設定を選択（gitignored、clone 単位）。スキップしても demo にフォールバック。
+./build.sh && ./run.sh                       # デフォルト ROS2_DISTRO=humble（setup.conf [build] arg_4 で設定）
+```
+
+`ln -sf` ステップをスキップしても問題ありません — Dockerfile が
+自動的に `config/demo_bridge.yaml` にフォールバックします
+（[#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65) 修正）。
+利用可能な設定一覧は [ブリッジ設定](#ブリッジ設定) を参照。
+
+## Overview
+
+`osrf/ros:foxy-ros1-bridge` の従来の配布経路は現代の host 上では
+すでに機能しません。Open Robotics は focal 以外で `ros-noetic-*`
+debs を公開しておらず、`ros-jazzy-ros1-bridge` も存在しません。
+`humble|jazzy ↔ foxy ↔ noetic` の chained DDS による回避策は、
+Fast-DDS のメジャーバージョン差 + REP-2011 type-hash 不一致により
+実測で破綻しました。本 repo はこれを単一の Dockerfile で置き換え、
+`ros:${ROS2_DISTRO}-ros-base` の上に Noetic `ros_comm` +
+`ros1_bridge` をソースビルドし、`ARG ROS2_DISTRO=humble|jazzy` で
+ターゲットを選択、multi-arch（amd64 + arm64、Jetson 含む）対応。
+詳細な migration rationale は
+[#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) を参照。
+
 ## 特徴
 
 - **ROS 1 + bridge をソースビルド**：`ros:${ROS2_DISTRO}-ros-base` をベースに、Noetic `ros_comm` を `rosinstall_generator` で tarball から `/opt/ros/noetic/` にビルド、`ros1_bridge` を `ros2/ros1_bridge` master から `/bridge_ws/install/` にビルドします。Humble (jammy) と Jazzy (noble) の両方に対応、`ARG ROS2_DISTRO` の matrix で切り替え。
-- **なぜソースビルドか**：Open Robotics は focal 以外で `ros-noetic-*` debs を公開しておらず、`ros-jazzy-ros1-bridge` も存在しません。`humble|jazzy ↔ foxy ↔ noetic` の chained DDS による回避策は、Fast-DDS のメジャーバージョン差 + REP-2011 type-hash 不一致により実測で破綻しました。詳細は [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) を参照。
 - **Jetson (arm64) 対応**：base image が multi-arch（amd64 のみの `osrf/ros:foxy-ros1-bridge` と異なる）
 - **Parameter bridge**：YAML 設定で topic ブリッジを構成可能
-- **builder / devel / runtime の分離**:`builder` stage は Noetic + `ros1_bridge` をソースビルドし**ソースツリーを保持**(`/noetic_ws/src/` と `/bridge_ws/src/ros1_bridge/`);`devel` (`FROM builder`) はソースを継承しコンテナ内での rebuild / debug を可能に、デフォルトでシェル起動 (`CMD bash`);`runtime` (`FROM ${IMAGE}`、**devel を継承しない**) はリーン版で `COPY --from=builder` で install ツリーのみ取り込み、`parameter_bridge` を `/bridge.yaml` 基準で自動起動
+- **builder / devel / runtime の分離**：`builder` stage は Noetic + `ros1_bridge` をソースビルドし**ソースツリーを保持**（`/noetic_ws/src/` と `/bridge_ws/src/ros1_bridge/`）；`devel`（`FROM builder`）はソースを継承しコンテナ内での rebuild / debug を可能に、デフォルトでシェル起動（`CMD bash`）；`runtime`（`FROM ${IMAGE}`、**devel を継承しない**）はリーン版で `COPY --from=builder` で install ツリーのみ取り込み、`parameter_bridge` を `/bridge.yaml` 基準で自動起動
 - **Docker Compose**：`compose.yaml` 一つでビルドと実行を管理
 - **サンプル設定**：scan と camera のブリッジ設定ファイルを同梱
 
@@ -59,9 +78,9 @@ ln -sf config/demo_bridge.yaml bridge.yaml
 
 ## ROS 2 distro の切り替え
 
-デフォルトは `humble`(jammy 22.04)。`jazzy`(noble 24.04)に切り替えるには:
+デフォルトは `humble`（jammy 22.04）。`jazzy`（noble 24.04）に切り替えるには：
 
-**方式 1(推奨):`setup.conf` を編集**。`[build]` セクションの `arg_4` を変更:
+**方式 1（推奨）：`setup.conf` を編集**。`[build]` セクションの `arg_4` を変更：
 
 ```ini
 [build]
@@ -70,7 +89,7 @@ arg_4 = ROS2_DISTRO=jazzy
 
 その後 rebuild。`setup.sh` は `setup.conf` を hash して `.env` の `SETUP_CONF_HASH`
 に書き込むため、`./build.sh` / `./run.sh` は変更を自動検出して `.env` + `compose.yaml`
-を再生成します。image tag(`yunchien/ros1_bridge:devel` 等)は distro を跨いで
+を再生成します。image tag（`yunchien/ros1_bridge:devel` 等）は distro を跨いで
 変わらず、切り替えはその場で rebuild されます。
 
 ```bash
@@ -78,8 +97,8 @@ arg_4 = ROS2_DISTRO=jazzy
 ./run.sh
 ```
 
-**方式 2:単発の `--build-arg`(直接 docker build)**。`./build.sh` を経由せず、
-`.env` / `compose.yaml` も更新しません:
+**方式 2：単発の `--build-arg`（直接 docker build）**。`./build.sh` を経由せず、
+`.env` / `compose.yaml` も更新しません：
 
 ```bash
 docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
@@ -97,7 +116,7 @@ setup.conf の変更はローカル build のみに影響し、`ghcr.io/ycpss912
 ./build.sh                       # devel をビルド（デフォルト）
 ./build.sh test                  # smoke test 付きビルド
 
-docker compose build devel     # 同等のコマンド
+docker compose build devel       # 同等のコマンド
 ```
 
 ### 実行
@@ -195,8 +214,8 @@ services_2_to_1:
 
 2 つの terminal でエンドツーエンドの bridge デモを実行します。
 メッセージ型は `std_msgs/String`。パターンは対称で、**server**
-terminal が `roscore` + `parameter_bridge`(ビルド時にイメージへ
-焼き込まれた `/demo_bridge.yaml` を読み込む)を起動し、**client**
+terminal が `roscore` + `parameter_bridge`（ビルド時にイメージへ
+焼き込まれた `/demo_bridge.yaml` を読み込む）を起動し、**client**
 terminal は subscribe するだけです。
 
 | Demo | Terminal 1 (server) | Terminal 2 (client) |
@@ -204,7 +223,7 @@ terminal は subscribe するだけです。
 | A — ROS 1 → ROS 2 | `./exec.sh /ros1_server.sh` | `./exec.sh /ros2_client.sh` |
 | B — ROS 2 → ROS 1 | `./exec.sh /ros2_server.sh` | `./exec.sh /ros1_client.sh` |
 
-実際の手順(コンテナを `./run.sh -d` で起動済みとして):
+実際の手順（コンテナを `./run.sh -d` で起動済みとして）：
 
 ```bash
 # Terminal 1 (server) — どちらかを選択
@@ -217,9 +236,9 @@ terminal は subscribe するだけです。
 ```
 
 Server スクリプトは各ステップを明示的にログ出力します
-(`[ros1_server] step N/5: ...`)。`roscore` と `parameter_bridge` が
+（`[ros1_server] step N/5: ...`）。`roscore` と `parameter_bridge` が
 いつ準備完了になったかが一目で分かります。Publish するメッセージは
-`MESSAGE` 環境変数で上書き可能です:
+`MESSAGE` 環境変数で上書き可能です：
 
 ```bash
 ./exec.sh env MESSAGE="hi from ROS 1" /ros1_server.sh
@@ -241,9 +260,9 @@ graph TD
     EXT4 --> builder
     EXT5 --> builder
 
-    builder --> devel["devel = builder + scripts\nCMD bash;ソースで rebuild 可能"]
+    builder --> devel["devel = builder + scripts\nCMD bash；ソースで rebuild 可能"]
 
-    EXT3 --> runtime["runtime\nリーン:COPY --from=builder install ツリー\nCMD ros2 run ros1_bridge parameter_bridge"]
+    EXT3 --> runtime["runtime\nリーン：COPY --from=builder install ツリー\nCMD ros2 run ros1_bridge parameter_bridge"]
     builder -.->|COPY --from=builder /opt/ros/noetic + /bridge_ws/install| runtime
 
     EXT1 --> test["test (一時的)\nshellcheck + hadolint + bats smoke"]
@@ -262,13 +281,12 @@ ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定義
 ├── Dockerfile                   # マルチステージビルド（devel + runtime + test）；source-builds Noetic + ros1_bridge
 ├── setup.conf                   # Repo override；[build] arg_4=ROS2_DISTRO で humble|jazzy を選択
-├── build.sh -> template/build.sh    # Symlink
-├── run.sh -> template/run.sh        # Symlink
-├── exec.sh -> template/exec.sh      # Symlink
-├── stop.sh -> template/stop.sh      # Symlink
-├── Makefile -> template/Makefile    # Symlink
-├── .template_version            # Template subtree バージョン（v0.4.1）
-├── template/                    # 共有スクリプト、テスト、CI（git subtree）
+├── build.sh -> template/script/docker/build.sh    # Symlink
+├── run.sh -> template/script/docker/run.sh        # Symlink
+├── exec.sh -> template/script/docker/exec.sh      # Symlink
+├── stop.sh -> template/script/docker/stop.sh      # Symlink
+├── Makefile -> template/script/docker/Makefile    # Symlink
+├── template/                    # 共有スクリプト、テスト、CI（git subtree；バージョンは template/.version）
 ├── script/
 │   ├── entrypoint.sh            # ROS 1 + ROS 2 を source、bridge 設定を読み込み
 │   ├── ros_entrypoint.sh        # ROS 環境のみ source（osrf 互換）
