@@ -2,7 +2,7 @@
 
 **[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
-> **TL;DR** — `ros:foxy-ros-base-focal` に ROS 1 snapshot apt repo を足して自ビルドした ROS 1/2 ブリッジコンテナ。`parameter_bridge` で ROS 1 (Noetic) と ROS 2 (Foxy) の topic をブリッジ。base image は multi-arch のため Jetson (arm64) に対応。
+> **TL;DR** — ROS 1/2 ブリッジコンテナ。**Humble + Jazzy のデュアルターゲット**で、ベースイメージは `ros:${ROS2_DISTRO}-ros-base`、**Noetic `ros_comm` をソースビルド**＋**`ros1_bridge` をソースビルド**します（Foxy / Noetic apt は focal 以外で提供されていないため）。`ARG ROS2_DISTRO=humble|jazzy` でターゲットを選択。base image は multi-arch のため Jetson (arm64) に対応。詳細な migration rationale は [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) を参照。
 >
 > ```bash
 > ./build.sh && ./run.sh
@@ -24,7 +24,8 @@
 
 ## 特徴
 
-- **自ビルド bridge イメージ**：`ros:foxy-ros-base-focal` をベースに、ROS 1 snapshot apt repo から ROS 1 Noetic と ROS 2 Foxy を併せてインストール
+- **ROS 1 + bridge をソースビルド**：`ros:${ROS2_DISTRO}-ros-base` をベースに、Noetic `ros_comm` を `rosinstall_generator` で tarball から `/opt/ros/noetic/` にビルド、`ros1_bridge` を `ros2/ros1_bridge` master から `/bridge_ws/install/` にビルドします。Humble (jammy) と Jazzy (noble) の両方に対応、`ARG ROS2_DISTRO` の matrix で切り替え。
+- **なぜソースビルドか**：Open Robotics は focal 以外で `ros-noetic-*` debs を公開しておらず、`ros-jazzy-ros1-bridge` も存在しません。`humble|jazzy ↔ foxy ↔ noetic` の chained DDS による回避策は、Fast-DDS のメジャーバージョン差 + REP-2011 type-hash 不一致により実測で破綻しました。詳細は [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) を参照。
 - **Jetson (arm64) 対応**：base image が multi-arch（amd64 のみの `osrf/ros:foxy-ros1-bridge` と異なる）
 - **Parameter bridge**：YAML 設定で topic ブリッジを構成可能
 - **devel / runtime の分離**：`devel` stage はデバッグ用のプレーンシェル（`CMD bash`）、`runtime` stage は `/bridge.yaml` に基づき `parameter_bridge` を自動起動
@@ -106,10 +107,11 @@ ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 サービ�
 | `config/demo_services_1to2.yaml` | ROS 1 サービスを ROS 2 に公開（`/add_two_ints`、`/static_map`） |
 | `config/demo_services_2to1.yaml` | ROS 2 サービスを ROS 1 に公開（`/get_parameters`） |
 
-> 二つのサービスデモが要求する type conversion は stock foxy の
-> `ros1_bridge` には組み込まれていません。対応する ROS 1 / ROS 2
-> パッケージを入れてイメージを再ビルドしない限り、runtime で
-> `no conversion for type ...` が表示されます。
+> 二つのサービスデモが要求する type conversion は、ここでソースビルド
+> された `ros1_bridge` にも組み込まれていません。`colcon build`
+> ステップで対応する ROS 1 / ROS 2 パッケージを追加してイメージを
+> 再ビルドしない限り、runtime で `no conversion for type ...` が
+> 表示されます。
 
 symlink を変更したくない場合はビルド時に上書き可能：
 
@@ -185,21 +187,18 @@ Server terminal で `Ctrl+C` を押すと `parameter_bridge` と `roscore`
 
 ```mermaid
 graph TD
-    EXT1["bats/bats:latest"]
-    EXT2["alpine:latest"]
-    EXT3["ros:foxy-ros-base-focal"]
-    EXT4["snapshots.ros.org\n(noetic + foxy apt)"]
+    EXT1["test-tools image\n(bats + shellcheck + hadolint)"]
+    EXT3["ros:${ROS2_DISTRO}-ros-base\n(humble | jazzy, multi-arch)"]
+    EXT4["github.com/ros/...\n(noetic ros_comm tarballs)"]
+    EXT5["github.com/ros2/ros1_bridge\n(master)"]
 
-    EXT1 --> bats-src["bats-src"]
-    EXT2 --> bats-ext["bats-extensions"]
-
-    EXT3 --> devel["devel\nros1 + ros2 + entrypoints\nCMD bash"]
+    EXT3 --> devel["devel\nソースビルド /opt/ros/noetic + /bridge_ws\nCMD bash"]
     EXT4 --> devel
+    EXT5 --> devel
 
     devel --> runtime["runtime\nCMD ros2 run ros1_bridge parameter_bridge"]
 
-    bats-src --> test["test一時的\nsmoke/ ビルド後に破棄"]
-    bats-ext --> test
+    EXT1 --> test["test (一時的)\nshellcheck + hadolint + bats smoke"]
     devel --> test
 
 ```
@@ -213,7 +212,8 @@ graph TD
 ```text
 ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定義
-├── Dockerfile                   # マルチステージビルド（devel + runtime + test）
+├── Dockerfile                   # マルチステージビルド（devel + runtime + test）；source-builds Noetic + ros1_bridge
+├── setup.conf                   # Repo override；[build] arg_4=ROS2_DISTRO で humble|jazzy を選択
 ├── build.sh -> template/build.sh    # Symlink
 ├── run.sh -> template/run.sh        # Symlink
 ├── exec.sh -> template/exec.sh      # Symlink

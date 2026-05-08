@@ -31,13 +31,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Pip-only path keeps jammy and noble identical:
 #   - empy 3.3.4: system python3-empy is 4.x; Noetic em.py needs 3.x
 #   - rosinstall + rosinstall-generator: dropped from noble apt
-#   - --break-system-packages: needed for noble (PEP 668), but pip 22 on
-#     jammy doesn't recognize it — detect at runtime so the same RUN works
-#     on both bases.
-RUN pip3 install --help | grep -q -- --break-system-packages \
-        && BSP="--break-system-packages" \
-        || BSP=""; \
-    pip3 install --no-cache-dir $BSP \
+#   - --break-system-packages: required on noble (PEP 668), unrecognized
+#     by pip 22 on jammy — branch on ROS2_DISTRO and intentionally
+#     word-split the empty/non-empty value into pip args.
+# hadolint ignore=SC2086
+RUN case "${ROS2_DISTRO}" in \
+        jazzy) BSP="--break-system-packages" ;; \
+        humble) BSP="" ;; \
+        *) echo "unsupported ROS2_DISTRO: ${ROS2_DISTRO}" >&2; exit 1 ;; \
+    esac; \
+    pip3 install --no-cache-dir ${BSP} \
         'empy==3.3.4' \
         rosinstall \
         rosinstall-generator

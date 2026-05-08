@@ -2,10 +2,10 @@
 
 **[English](README.md)** | **[繁體中文](doc/README.zh-TW.md)** | **[简体中文](doc/README.zh-CN.md)** | **[日本語](doc/README.ja.md)**
 
-> **TL;DR** — ROS 1/2 bridge container built from `ros:foxy-ros-base-focal` plus the ROS 1 snapshot apt repo. Bridges ROS 1 (Noetic) and ROS 2 (Foxy) topics via `parameter_bridge`. Multi-arch base supports Jetson (arm64).
+> **TL;DR** — ROS 1/2 bridge container with **dual Humble + Jazzy targets** built from `ros:${ROS2_DISTRO}-ros-base` plus **source-built Noetic `ros_comm`** + **source-built `ros1_bridge`** (since Foxy / Noetic apt is no longer available outside focal). Select target via `ARG ROS2_DISTRO=humble|jazzy`. Multi-arch base supports Jetson (arm64). See [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) for the full migration rationale.
 >
 > ```bash
-> ./build.sh && ./run.sh
+> ./build.sh && ./run.sh           # default ROS2_DISTRO=jazzy (set via setup.conf [build] arg_4)
 > ```
 
 ---
@@ -24,7 +24,8 @@
 
 ## Features
 
-- **Self-built bridge**: `ros:foxy-ros-base-focal` base plus ROS 1 snapshot apt repo — installs ROS 1 Noetic and ROS 2 Foxy side-by-side
+- **Source-built ROS 1 + bridge**: `ros:${ROS2_DISTRO}-ros-base` base; Noetic `ros_comm` built from `rosinstall_generator` tarballs into `/opt/ros/noetic/`; `ros1_bridge` built from `ros2/ros1_bridge` master into `/bridge_ws/install/`. Both Humble (jammy) and Jazzy (noble) supported via `ARG ROS2_DISTRO` matrix.
+- **Why source-build**: Open Robotics never published `ros-noetic-*` debs outside focal, and `ros-jazzy-ros1-bridge` does not exist. The chained DDS workaround (`humble|jazzy ↔ foxy ↔ noetic`) was empirically ruled out due to Fast-DDS major version skew + REP-2011 type-hash mismatches — see [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) for the full investigation.
 - **Jetson (arm64) support**: multi-arch base image (unlike `osrf/ros:foxy-ros1-bridge`, which is amd64 only)
 - **Parameter bridge**: configurable topic bridging via YAML
 - **devel / runtime split**: `devel` stage is a plain shell (`CMD bash`) for debugging; `runtime` stage auto-starts `parameter_bridge` from `/bridge.yaml`
@@ -107,9 +108,9 @@ ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service de
 | `config/demo_services_2to1.yaml` | ROS 2 services exposed to ROS 1 (`/get_parameters`) |
 
 > The two service demos require type conversions that are not compiled
-> into the stock foxy `ros1_bridge` build — they will print `no
+> into the source-built `ros1_bridge` here either — they will print `no
 > conversion for type ...` at runtime unless the image is rebuilt with
-> the matching ROS 1 / ROS 2 packages.
+> the matching ROS 1 / ROS 2 packages added to the `colcon build` step.
 
 Override at build time without changing the symlink:
 
@@ -183,21 +184,18 @@ published string with `MESSAGE`:
 
 ```mermaid
 graph TD
-    EXT1["bats/bats:latest"]
-    EXT2["alpine:latest"]
-    EXT3["ros:foxy-ros-base-focal"]
-    EXT4["snapshots.ros.org\n(noetic + foxy apt)"]
+    EXT1["test-tools image\n(bats + shellcheck + hadolint)"]
+    EXT3["ros:${ROS2_DISTRO}-ros-base\n(humble | jazzy, multi-arch)"]
+    EXT4["github.com/ros/...\n(noetic ros_comm tarballs)"]
+    EXT5["github.com/ros2/ros1_bridge\n(master)"]
 
-    EXT1 --> bats-src["bats-src"]
-    EXT2 --> bats-ext["bats-extensions"]
-
-    EXT3 --> devel["devel\nros1 + ros2 + entrypoints\nCMD bash"]
+    EXT3 --> devel["devel\nsource-built /opt/ros/noetic + /bridge_ws\nCMD bash"]
     EXT4 --> devel
+    EXT5 --> devel
 
     devel --> runtime["runtime\nCMD ros2 run ros1_bridge parameter_bridge"]
 
-    bats-src --> test["test (ephemeral)\nsmoke tests, discarded after build"]
-    bats-ext --> test
+    EXT1 --> test["test (ephemeral)\nshellcheck + hadolint + bats smoke"]
     devel --> test
 
 ```
@@ -211,7 +209,8 @@ See [TEST.md](doc/test/TEST.md) for details.
 ```text
 ros1_bridge/
 ├── compose.yaml                 # Docker Compose definition
-├── Dockerfile                   # Multi-stage build (devel + runtime + test)
+├── Dockerfile                   # Multi-stage build (devel + runtime + test); source-builds Noetic + ros1_bridge
+├── setup.conf                   # Repo override; [build] arg_4=ROS2_DISTRO selects humble|jazzy
 ├── build.sh -> template/build.sh    # Symlink
 ├── run.sh -> template/run.sh        # Symlink
 ├── exec.sh -> template/exec.sh      # Symlink

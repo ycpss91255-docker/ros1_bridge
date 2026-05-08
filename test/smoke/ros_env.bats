@@ -42,7 +42,7 @@ setup() {
     # spec is distro-agnostic but rejects unset / unsupported values.
     case "${ROS2_DISTRO}" in
         humble|jazzy) ;;
-        *) flunk "ROS2_DISTRO is '${ROS2_DISTRO}', expected 'humble' or 'jazzy'" ;;
+        *) fail "ROS2_DISTRO is '${ROS2_DISTRO}', expected 'humble' or 'jazzy'" ;;
     esac
 }
 
