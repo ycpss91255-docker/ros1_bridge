@@ -5,7 +5,7 @@
 > **TL;DR** — ROS 1/2 ブリッジコンテナ。**Humble + Jazzy のデュアルターゲット**で、ベースイメージは `ros:${ROS2_DISTRO}-ros-base`、**Noetic `ros_comm` をソースビルド**＋**`ros1_bridge` をソースビルド**します（Foxy / Noetic apt は focal 以外で提供されていないため）。`ARG ROS2_DISTRO=humble|jazzy` でターゲットを選択。base image は multi-arch のため Jetson (arm64) に対応。詳細な migration rationale は [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) を参照。
 >
 > ```bash
-> ./build.sh && ./run.sh
+> ./build.sh && ./run.sh           # デフォルト ROS2_DISTRO=humble（setup.conf [build] arg_4 で設定）
 > ```
 
 ---
@@ -14,6 +14,7 @@
 
 - [特徴](#特徴)
 - [クイックスタート](#クイックスタート)
+- [ROS 2 distro の切り替え](#ros-2-distro-の切り替え)
 - [使い方](#使い方)
 - [ブリッジ設定](#ブリッジ設定)
 - [Demo](#demo)
@@ -29,8 +30,6 @@
 - **Jetson (arm64) 対応**：base image が multi-arch（amd64 のみの `osrf/ros:foxy-ros1-bridge` と異なる）
 - **Parameter bridge**：YAML 設定で topic ブリッジを構成可能
 - **builder / devel / runtime の分離**:`builder` stage は Noetic + `ros1_bridge` をソースビルドし**ソースツリーを保持**(`/noetic_ws/src/` と `/bridge_ws/src/ros1_bridge/`);`devel` (`FROM builder`) はソースを継承しコンテナ内での rebuild / debug を可能に、デフォルトでシェル起動 (`CMD bash`);`runtime` (`FROM ${IMAGE}`、**devel を継承しない**) はリーン版で `COPY --from=builder` で install ツリーのみ取り込み、`parameter_bridge` を `/bridge.yaml` 基準で自動起動
-- **デュアル entrypoint**：`/entrypoint.sh`（両 ROS を source + `rosparam load /bridge.yaml`）と `/ros_entrypoint.sh`（ROS 環境のみ、osrf 慣習互換）
-- **Smoke Test**：Bats テストで両 ROS 環境と bridge の可用性を検証
 - **Docker Compose**：`compose.yaml` 一つでビルドと実行を管理
 - **サンプル設定**：scan と camera のブリッジ設定ファイルを同梱
 
@@ -46,6 +45,38 @@
 # 3. 起動中のコンテナに接続
 ./exec.sh
 ```
+
+## ROS 2 distro の切り替え
+
+デフォルトは `humble`(jammy 22.04)。`jazzy`(noble 24.04)に切り替えるには:
+
+**方式 1(推奨):`setup.conf` を編集**。`[build]` セクションの `arg_4` を変更:
+
+```ini
+[build]
+arg_4 = ROS2_DISTRO=jazzy
+```
+
+その後 rebuild。`setup.sh` は `setup.conf` を hash して `.env` の `SETUP_CONF_HASH`
+に書き込むため、`./build.sh` / `./run.sh` は変更を自動検出して `.env` + `compose.yaml`
+を再生成します。image tag(`yunchien/ros1_bridge:devel` 等)は distro を跨いで
+変わらず、切り替えはその場で rebuild されます。
+
+```bash
+./build.sh           # setup.conf から新しい ROS2_DISTRO を取得
+./run.sh
+```
+
+**方式 2:単発の `--build-arg`(直接 docker build)**。`./build.sh` を経由せず、
+`.env` / `compose.yaml` も更新しません:
+
+```bash
+docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
+```
+
+CI は `.github/workflows/main.yaml` の matrix で両 distro を並列 build します。
+setup.conf の変更はローカル build のみに影響し、`ghcr.io/ycpss91255-docker/ros1_bridge-{humble,jazzy}`
+へ公開される image は setup.conf に依らず常に matrix が決定します。
 
 ## 使い方
 
