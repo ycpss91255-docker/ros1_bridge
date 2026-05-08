@@ -10,24 +10,26 @@ setup() {
     assert [ -f "/opt/ros/noetic/setup.bash" ]
 }
 
-@test "ROS 2 (foxy) setup.bash exists" {
-    assert [ -f "/opt/ros/foxy/setup.bash" ]
+@test "ROS 2 (\${ROS2_DISTRO}) setup.bash exists" {
+    assert [ -f "/opt/ros/${ROS2_DISTRO}/setup.bash" ]
 }
 
 @test "ROS 1 environment can be sourced" {
-    run bash -c "source /opt/ros/noetic/setup.bash && echo ok"
+    run bash -c "source /opt/ros/${ROS1_DISTRO}/setup.bash && echo ok"
     assert_success
     assert_line "ok"
 }
 
 @test "ROS 2 environment can be sourced after ROS 1" {
-    run bash -c "source /opt/ros/noetic/setup.bash && source /opt/ros/foxy/setup.bash && echo ok"
+    run bash -c "source /opt/ros/${ROS1_DISTRO}/setup.bash && source /opt/ros/${ROS2_DISTRO}/setup.bash && echo ok"
     assert_success
     assert_line "ok"
 }
 
 @test "ros1_bridge package is available" {
-    run bash -c "source /opt/ros/noetic/setup.bash && source /opt/ros/foxy/setup.bash && ros2 pkg list | grep ros1_bridge"
+    # ros1_bridge is built from source into /bridge_ws (not into the ROS 2
+    # distro tree), so its install overlay must be sourced too.
+    run bash -c "source /opt/ros/${ROS1_DISTRO}/setup.bash && source /opt/ros/${ROS2_DISTRO}/setup.bash && source /bridge_ws/install/setup.bash && ros2 pkg list | grep ros1_bridge"
     assert_success
 }
 
@@ -35,8 +37,13 @@ setup() {
     assert_equal "${ROS1_DISTRO}" "noetic"
 }
 
-@test "ROS2_DISTRO env var is set to foxy" {
-    assert_equal "${ROS2_DISTRO}" "foxy"
+@test "ROS2_DISTRO env var is set (humble or jazzy)" {
+    # Dockerfile selects between the two via ARG ROS2_DISTRO; the smoke
+    # spec is distro-agnostic but rejects unset / unsupported values.
+    case "${ROS2_DISTRO}" in
+        humble|jazzy) ;;
+        *) flunk "ROS2_DISTRO is '${ROS2_DISTRO}', expected 'humble' or 'jazzy'" ;;
+    esac
 }
 
 # -------------------- Bridge config --------------------
@@ -54,9 +61,10 @@ setup() {
 }
 
 @test "ros_entrypoint.sh sources both ROS environments" {
+    # ros_entrypoint.sh sources ROS 1 then ROS 2; final ROS_DISTRO matches ${ROS2_DISTRO}.
     run /ros_entrypoint.sh bash -c 'echo "${ROS_DISTRO}"'
     assert_success
-    assert_line "foxy"
+    assert_line "${ROS2_DISTRO}"
 }
 
 @test "ros_entrypoint.sh exposes ros2 command" {

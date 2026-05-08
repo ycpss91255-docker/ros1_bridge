@@ -18,9 +18,17 @@ permissions:
 
 jobs:
   call-docker-build:
+    # Matrix across ROS 2 distros — Noetic source-built into both
+    # humble (jammy) and jazzy (noble) targets per issue #53. Each
+    # distro is built and pushed under its own image_name to keep
+    # registry tags unambiguous (e.g. ros1_bridge-jazzy:devel).
+    strategy:
+      fail-fast: false
+      matrix:
+        ros2_distro: [humble, jazzy]
     uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v0.19.0
     with:
-      image_name: ros1_bridge
+      image_name: ros1_bridge-${{ matrix.ros2_distro }}
       build_runtime: true
       platforms: linux/amd64,linux/arm64
       test_tools_version: v0.11.0
@@ -29,10 +37,15 @@ jobs:
       # the Dockerfile ARG default to point at one of the tracked configs.
       build_args: |
         BRIDGE_FILE=config/scan_bridge.yaml
+        ROS2_DISTRO=${{ matrix.ros2_distro }}
 
   call-release:
     needs: call-docker-build
     if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        ros2_distro: [humble, jazzy]
     uses: ycpss91255-docker/template/.github/workflows/release-worker.yaml@v0.19.0
     with:
-      archive_name_prefix: ros1_bridge
+      archive_name_prefix: ros1_bridge-${{ matrix.ros2_distro }}

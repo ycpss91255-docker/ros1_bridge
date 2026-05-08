@@ -1,47 +1,105 @@
-ARG IMAGE="ros:foxy-ros-base-focal"
+# ROS2_DISTRO is required (no default) — caller must supply via build_arg.
+# main.yaml provides it via the matrix; setup.conf via [build] arg_4;
+# direct `docker build` requires `--build-arg ROS2_DISTRO=humble|jazzy`.
+ARG ROS2_DISTRO
+ARG IMAGE="ros:${ROS2_DISTRO}-ros-base"
 ARG TEST_TOOLS_IMAGE="test-tools:local"
 
 ############################## devel ##############################
 FROM ${IMAGE} AS devel
 
-# tools for adding ros1 snapshot apt repo
-RUN apt-get update && apt-get install -q -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        gnupg \
-    && rm -rf /var/lib/apt/lists/*
-
-# fetch ros1 snapshot archive key into a dedicated keyring
-RUN set -eux; \
-    key='4B63CF8FDE49746E98FA01DDAD19BAB3CBF125EA'; \
-    GNUPGHOME="$(mktemp -d)"; \
-    export GNUPGHOME; \
-    gpg --batch --keyserver keyserver.ubuntu.com --recv-keys "${key}"; \
-    mkdir -p /usr/share/keyrings; \
-    gpg --batch --export "${key}" > /usr/share/keyrings/ros1-snapshots-archive-keyring.gpg; \
-    gpgconf --kill all; \
-    rm -rf "${GNUPGHOME}"
-
-# register ros1 noetic final snapshot apt source
-RUN echo "deb [ signed-by=/usr/share/keyrings/ros1-snapshots-archive-keyring.gpg ] http://snapshots.ros.org/noetic/final/ubuntu focal main" \
-    > /etc/apt/sources.list.d/ros1-snapshots.list
-
+# Re-declare ARGs needed inside this stage (FROM-scoped ARGs don't carry).
+ARG ROS2_DISTRO
 ENV ROS1_DISTRO=noetic
-ENV ROS2_DISTRO=foxy
+ENV ROS2_DISTRO=${ROS2_DISTRO}
 
-# install ROS 1 packages
+# Bootstrap deps for source-building Noetic on jammy / noble. ROS 1 Noetic
+# has no apt packages outside focal, so we build ros_comm from source.
+# See issue #53 for full rationale.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ros-noetic-ros-comm=1.17.4-1* \
-        ros-noetic-roscpp-tutorials=0.10.3-1* \
-        ros-noetic-rospy-tutorials=0.10.3-1* \
+        build-essential \
+        cmake \
+        git \
+        python3-pip \
+        python3-rosdep \
+        python3-vcstool \
+        python3-catkin-pkg \
+        python3-nose \
+        wget \
     && rm -rf /var/lib/apt/lists/*
 
-# install ROS 2 packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ros-foxy-ros1-bridge=0.9.7-1* \
-        ros-foxy-demo-nodes-cpp=0.9.4-1* \
-        ros-foxy-demo-nodes-py=0.9.4-1* \
+# Pip-only path keeps jammy and noble identical:
+#   - empy 3.3.4: system python3-empy is 4.x; Noetic em.py needs 3.x
+#   - rosinstall + rosinstall-generator: dropped from noble apt
+#   - --break-system-packages: needed for noble (PEP 668), but pip 22 on
+#     jammy doesn't recognize it — detect at runtime so the same RUN works
+#     on both bases.
+RUN pip3 install --help | grep -q -- --break-system-packages \
+        && BSP="--break-system-packages" \
+        || BSP=""; \
+    pip3 install --no-cache-dir $BSP \
+        'empy==3.3.4' \
+        rosinstall \
+        rosinstall-generator
+
+# rosdep init may already be done in the ROS base image; tolerate it.
+RUN rosdep init 2>/dev/null || true \
+    && rosdep update --rosdistro=noetic
+
+# Fetch + build Noetic ros_comm from source. Installs to /opt/ros/noetic
+# to keep script path conventions (ros_entrypoint.sh, ros1_server.sh, …).
+WORKDIR /noetic_ws
+
+RUN rosinstall_generator ros_comm \
+        --rosdistro noetic \
+        --deps \
+        --tar \
+        > noetic-ros_comm.rosinstall \
+    && mkdir -p src \
+    && vcs import --input noetic-ros_comm.rosinstall ./src
+
+RUN apt-get update \
+    && rosdep install --from-paths ./src --ignore-src --rosdistro noetic -y \
+        --skip-keys "python3-catkin-pkg-modules python3-rosdep-modules python3-rosdistro-modules" \
     && rm -rf /var/lib/apt/lists/*
+
+# Two patches needed for the build to succeed on both jammy and noble:
+#   1. `env -u ROS_DISTRO` — base image sets ROS_DISTRO=humble/jazzy;
+#      Noetic's setup.bash then prints a warning to stdout that catkin's
+#      environment_cache.py ast.literal_evals and trips on SyntaxError.
+#   2. ROSCONSOLE_BACKEND=print — system log4cxx 1.x has shared_ptr API
+#      incompatible with Noetic's log4cxx 0.10-era code. The `print`
+#      backend writes to stderr only, sufficient for ros1_bridge use.
+# Build + drop source/intermediate in one RUN — Docker layers are
+# incremental, so a separate cleanup RUN wouldn't shrink the image.
+RUN env -u ROS_DISTRO ./src/catkin/bin/catkin_make_isolated \
+        --install \
+        --install-space /opt/ros/noetic \
+        -DCMAKE_BUILD_TYPE=Release \
+        --cmake-args -DROSCONSOLE_BACKEND=print \
+    && rm -rf /noetic_ws/src \
+        /noetic_ws/build_isolated \
+        /noetic_ws/devel_isolated \
+        /noetic_ws/noetic-ros_comm.rosinstall
+
+# Build ros1_bridge from source. Upstream `ros2/ros1_bridge` has only a
+# `master` branch (no per-distro branches); all ROS 2 distros build from
+# master per Open Robotics' release process.
+WORKDIR /bridge_ws
+
+RUN mkdir -p src \
+    && cd src \
+    && git clone https://github.com/ros2/ros1_bridge.git
+
+# Build ros1_bridge + drop sources/intermediates in the same RUN.
+RUN bash -c "set -e \
+    && source /opt/ros/${ROS1_DISTRO}/setup.bash \
+    && source /opt/ros/${ROS2_DISTRO}/setup.bash \
+    && cd /bridge_ws \
+    && MAKEFLAGS='-j2' colcon build \
+        --packages-select ros1_bridge \
+        --cmake-args -DCMAKE_BUILD_TYPE=Release" \
+    && rm -rf /bridge_ws/src /bridge_ws/build /bridge_ws/log
 
 ARG BRIDGE_FILE="bridge.yaml"
 

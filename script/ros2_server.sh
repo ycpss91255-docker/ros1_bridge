@@ -51,9 +51,15 @@ ros2_env() {
 }
 
 # Source ROS 1 then ROS 2 (for parameter_bridge — needs both).
+# ros1_bridge is built from source into /bridge_ws (not installed under
+# /opt/ros/${ROS2_DISTRO}/share), so its overlay must be sourced too.
 both_env() {
     ros1_env
     ros2_env
+    if [[ -f /bridge_ws/install/setup.bash ]]; then
+        # shellcheck source=/dev/null
+        source /bridge_ws/install/setup.bash >/dev/null 2>&1
+    fi
 }
 
 cleanup() {
@@ -99,7 +105,7 @@ main() {
     done
     log "        bridge ready (pid=${BRIDGE_PID})"
 
-    log "step 4/4: publishing on ${TOPIC} at 1 Hz: \"${message}\" — ROS 2 env"
+    log "step 4/4: publishing on ${TOPIC} at 1 Hz: \"${message}\" — ROS 2 (${ROS2_DISTRO}) env"
     log "        Ctrl+C to stop everything."
     ( ros2_env; exec ros2 topic pub -r 1 "${TOPIC}" std_msgs/msg/String "{data: '${message}'}" )
 }
