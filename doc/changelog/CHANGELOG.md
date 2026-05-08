@@ -7,6 +7,13 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `LICENSE` (Apache 2.0) and CI / License badges in
+  `README.md` + 3 translated READMEs (#66). Fresh add
+  -- repo previously had no LICENSE and no badges. Aligns with
+  the org-wide Apache 2.0 migration tracked across 17 sister
+  repos.
+
 ### Fixed
 - **Fresh-clone build no longer fails when `bridge.yaml` symlink is absent** (closes [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)). Pre-fix, `Dockerfile` did `COPY --chmod=0644 "${BRIDGE_FILE}" /bridge.yaml` with `BRIDGE_FILE` defaulting to the gitignored `bridge.yaml` symlink — a brand-new clone has no symlink, so `./build.sh` and `./run.sh` failed with `failed to compute cache key: failed to calculate checksum of ref ...: "/bridge.yaml": not found` before the user reached the "Bridge Configuration" section that documents the symlink rule. Replaced the `COPY` in both `devel` and `runtime` stages with a `RUN --mount=type=bind,source=.,target=/ctx` block that picks `/ctx/${BRIDGE_FILE}` if it resolves to a regular file (covers both the default symlink-present path and any explicit `--build-arg BRIDGE_FILE=config/<picked>.yaml`), falls back to `config/demo_bridge.yaml` when `BRIDGE_FILE=bridge.yaml` (the default) doesn't resolve, and fails loudly when an explicit override doesn't resolve. CI's `BRIDGE_FILE=config/scan_bridge.yaml` build arg has been dropped from `.github/workflows/main.yaml` so every CI run exercises the fallback path under regression coverage. Added `bridge.yaml is non-empty (fresh-clone fallback regression #65)` smoke test in `test/smoke/ros_env.bats` to catch the corner case where the bind-mount cp produces an empty file. 4-language READMEs updated: TL;DR + Quick Start mention the optional `ln -sf config/<picked>.yaml bridge.yaml` step explicitly with a fallback note, and the "Bridge Configuration" section's intro now states the fallback rule. The generic template-side companion (a `script/pre-build.sh` opt-in hook for repo-specific UX hints) is filed separately as [template#248](https://github.com/ycpss91255-docker/template/issues/248).
 

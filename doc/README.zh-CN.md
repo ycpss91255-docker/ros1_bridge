@@ -1,5 +1,7 @@
 # ROS 1 Bridge Docker Environment
 
+[![CI](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml/badge.svg)](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml) [![License](https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square)](../LICENSE)
+
 **[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
 > **TL;DR** — ROS 1/2 bridge 容器，**同时支持 Humble + Jazzy**，base image 为 `ros:${ROS2_DISTRO}-ros-base`，**Noetic `ros_comm` 从源码构建** + **`ros1_bridge` 从源码构建**（因为 Foxy / Noetic apt 在 focal 之外已经没有包）。通过 `ARG ROS2_DISTRO=humble|jazzy` 选择目标。base image 为 multi-arch，支持 Jetson (arm64)。完整 migration rationale 见 [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53)。
