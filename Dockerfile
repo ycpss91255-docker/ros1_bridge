@@ -224,13 +224,13 @@ COPY --chmod=0644 config/demo_bridge.yaml /demo_bridge.yaml
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["ros2", "run", "ros1_bridge", "parameter_bridge"]
 
-############################## test (ephemeral) ##############################
+############################## devel-test (ephemeral) ##############################
 # Resolves to test-tools:local (local ./build.sh builds Dockerfile.test-tools
 # into the host Docker daemon) or ghcr.io/ycpss91255-docker/test-tools:vX.Y.Z
 # (CI passes the matching template tag via --build-arg TEST_TOOLS_IMAGE=...).
 FROM ${TEST_TOOLS_IMAGE} AS test-tools-stage
 
-FROM devel AS test
+FROM devel AS devel-test
 
 # Lint tools (from pre-built test-tools image; see TEST_TOOLS_IMAGE at top)
 COPY --from=test-tools-stage /usr/local/bin/shellcheck /usr/local/bin/shellcheck
@@ -258,3 +258,17 @@ COPY template/test/smoke/test_helper.bash template/test/smoke/script_help.bats /
 COPY test/smoke/ /smoke_test/
 
 RUN bats /smoke_test/
+
+############################## runtime-test (ephemeral) ##############################
+# Install-check smoke for the runtime image (template v0.21.1+ #243).
+# Default smoke verifies USER + bash on PATH. Override per-repo via
+# build_args: RUNTIME_SMOKE_CMD=<command> (constraint: CLI-only, no
+# GUI binaries that init Qt / OGRE on --version / --help).
+#
+# `sh -c` wrapper required: bare `RUN ${ARG}` word-splits operators
+# (&&, ||) and nested quotes. The wrapper passes the value as a
+# single string for sh to parse normally.
+FROM runtime AS runtime-test
+
+ARG RUNTIME_SMOKE_CMD='whoami && bash --version'
+RUN sh -c "${RUNTIME_SMOKE_CMD}"
