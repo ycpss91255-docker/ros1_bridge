@@ -28,7 +28,7 @@
 - **為什麼從原始碼建置**：Open Robotics 從未在 focal 以外發布 `ros-noetic-*` debs，且 `ros-jazzy-ros1-bridge` 不存在。`humble|jazzy ↔ foxy ↔ noetic` 的 chained DDS 變通方案實測因 Fast-DDS 大版本差異 + REP-2011 type-hash 不匹配而失敗，完整調查見 [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53)。
 - **Jetson (arm64) 支援**：base image 為 multi-arch（不同於僅 amd64 的 `osrf/ros:foxy-ros1-bridge`）
 - **Parameter bridge**：透過 YAML 設定可配置的 topic 橋接
-- **devel / runtime 分離**：`devel` stage 預設進 shell（`CMD bash`）方便開發除錯；`runtime` stage 自動執行 `parameter_bridge` 讀取 `/bridge.yaml`
+- **builder / devel / runtime 分離**:`builder` stage 從原始碼編 Noetic + `ros1_bridge` 並**保留 source 目錄**(`/noetic_ws/src/` 與 `/bridge_ws/src/ros1_bridge/`);`devel` (`FROM builder`) 繼承 source 給容器內 rebuild / debug,預設進 shell (`CMD bash`);`runtime` (`FROM ${IMAGE}`,**不繼承 devel**) 為精簡版,只 `COPY --from=builder` install 樹,自動執行 `parameter_bridge` 讀取 `/bridge.yaml`
 - **雙 entrypoint**：`/entrypoint.sh`（source 兩個 ROS + `rosparam load /bridge.yaml`）與 `/ros_entrypoint.sh`（純 ROS 環境，相容 osrf 慣例）
 - **Smoke Test**：Bats 測試驗證兩個 ROS 環境及 bridge 可用性
 - **Docker Compose**：一個 `compose.yaml` 管理建置與執行
@@ -186,11 +186,14 @@ graph TD
     EXT4["github.com/ros/...\n(noetic ros_comm tarballs)"]
     EXT5["github.com/ros2/ros1_bridge\n(master)"]
 
-    EXT3 --> devel["devel\n從原始碼建置 /opt/ros/noetic + /bridge_ws\nCMD bash"]
-    EXT4 --> devel
-    EXT5 --> devel
+    EXT3 --> builder["builder\n從原始碼建置 /opt/ros/noetic + /bridge_ws\n(source 目錄保留)"]
+    EXT4 --> builder
+    EXT5 --> builder
 
-    devel --> runtime["runtime\nCMD ros2 run ros1_bridge parameter_bridge"]
+    builder --> devel["devel = builder + scripts\nCMD bash;source 可供 rebuild"]
+
+    EXT3 --> runtime["runtime\n精簡:COPY --from=builder install 樹\nCMD ros2 run ros1_bridge parameter_bridge"]
+    builder -.->|COPY --from=builder /opt/ros/noetic + /bridge_ws/install| runtime
 
     EXT1 --> test["test (暫時性)\nshellcheck + hadolint + bats smoke"]
     devel --> test

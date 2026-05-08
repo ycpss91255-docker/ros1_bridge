@@ -88,6 +88,24 @@ setup() {
     assert_output --partial "hello"
 }
 
+@test "entrypoint.sh handles --help in CMD without source-propagation error" {
+    # Regression for issue #59: bash's `source FILE` (without explicit
+    # args) propagates the calling script's positional parameters to
+    # the sourced file. /entrypoint.sh used to call
+    # `source /opt/ros/${ROS1_DISTRO}/setup.bash` without trailing `--`,
+    # so when CMD ended in `--help` (any --flag arg), catkin's
+    # `_setup_util.py "$@"` saw `--help`, printed argparse usage to
+    # stdout, and the setup wrapper sourced that usage as shell — the
+    # container died with `setup.sh.<rand>: line 1: usage:: command
+    # not found`. Fix: pass an explicit `--` to every `source ...`
+    # call. This test verifies that a CMD ending in `--help` does NOT
+    # surface the "usage::" symptom.
+    run env ROS_MASTER_URI=http://127.0.0.1:11311 bash /entrypoint.sh echo --help
+    assert_success
+    refute_output --partial "usage::"
+    assert_output --partial "--help"
+}
+
 # -------------------- Demo helpers --------------------
 
 @test "demo_bridge.yaml exists" {

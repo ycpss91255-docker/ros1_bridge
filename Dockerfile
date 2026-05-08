@@ -5,10 +5,13 @@ ARG ROS2_DISTRO
 ARG IMAGE="ros:${ROS2_DISTRO}-ros-base"
 ARG TEST_TOOLS_IMAGE="test-tools:local"
 
-############################## devel ##############################
-FROM ${IMAGE} AS devel
+############################## builder ##############################
+# Heavy build stage. Source-builds Noetic ros_comm + ros1_bridge,
+# keeps source + intermediate trees so downstream `devel` can reuse
+# them for re-build / debug. Runtime stage does NOT inherit from this
+# stage; it COPYs only the install trees out.
+FROM ${IMAGE} AS builder
 
-# Re-declare ARGs needed inside this stage (FROM-scoped ARGs don't carry).
 ARG ROS2_DISTRO
 ENV ROS1_DISTRO=noetic
 ENV ROS2_DISTRO=${ROS2_DISTRO}
@@ -73,17 +76,13 @@ RUN apt-get update \
 #   2. ROSCONSOLE_BACKEND=print — system log4cxx 1.x has shared_ptr API
 #      incompatible with Noetic's log4cxx 0.10-era code. The `print`
 #      backend writes to stderr only, sufficient for ros1_bridge use.
-# Build + drop source/intermediate in one RUN — Docker layers are
-# incremental, so a separate cleanup RUN wouldn't shrink the image.
+# Source + build_isolated / devel_isolated trees are KEPT so devel can
+# `catkin_make_isolated` again after editing.
 RUN env -u ROS_DISTRO ./src/catkin/bin/catkin_make_isolated \
         --install \
         --install-space /opt/ros/noetic \
         -DCMAKE_BUILD_TYPE=Release \
-        --cmake-args -DROSCONSOLE_BACKEND=print \
-    && rm -rf /noetic_ws/src \
-        /noetic_ws/build_isolated \
-        /noetic_ws/devel_isolated \
-        /noetic_ws/noetic-ros_comm.rosinstall
+        --cmake-args -DROSCONSOLE_BACKEND=print
 
 # Build ros1_bridge from source. Upstream `ros2/ros1_bridge` has only a
 # `master` branch (no per-distro branches); all ROS 2 distros build from
@@ -94,15 +93,21 @@ RUN mkdir -p src \
     && cd src \
     && git clone https://github.com/ros2/ros1_bridge.git
 
-# Build ros1_bridge + drop sources/intermediates in the same RUN.
+# Build ros1_bridge — source / build / log trees KEPT so devel can rerun
+# colcon build after editing src/ros1_bridge.
 RUN bash -c "set -e \
     && source /opt/ros/${ROS1_DISTRO}/setup.bash \
     && source /opt/ros/${ROS2_DISTRO}/setup.bash \
     && cd /bridge_ws \
     && MAKEFLAGS='-j2' colcon build \
         --packages-select ros1_bridge \
-        --cmake-args -DCMAKE_BUILD_TYPE=Release" \
-    && rm -rf /bridge_ws/src /bridge_ws/build /bridge_ws/log
+        --cmake-args -DCMAKE_BUILD_TYPE=Release"
+
+############################## devel ##############################
+# Devel = builder + repo's scripts + bridge.yaml. Source trees still
+# present at /noetic_ws/src and /bridge_ws/src/ros1_bridge — edit and
+# rebuild in-place via `catkin_make_isolated` / `colcon build`.
+FROM builder AS devel
 
 ARG BRIDGE_FILE="bridge.yaml"
 
@@ -114,7 +119,74 @@ ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
 
 ############################## runtime ##############################
-FROM devel AS runtime
+# Runtime = lean. `FROM ${IMAGE}` (= ros:${ROS2_DISTRO}-ros-base) means
+# Python, Boost runtime libs, log4cxx, libssl etc. that ROS 2 itself
+# depends on are already available — they are also what Noetic ros_comm
+# and ros1_bridge link against (same major Boost ABI as the host distro
+# ships, log4cxx not actually used at runtime since builder built with
+# -DROSCONSOLE_BACKEND=print). empy / python3-pip / rosinstall are
+# pure build-time helpers (message generation runs at build, not at
+# load) so they are intentionally NOT installed here. Issue #59 has
+# the architectural rationale.
+#
+# If the smoke test surfaces a missing .so at `parameter_bridge` load
+# (ldd unresolved), add the minimum apt package here — do NOT regress
+# to installing the full builder dep set.
+FROM ${IMAGE} AS runtime
+
+ARG ROS2_DISTRO
+ENV ROS1_DISTRO=noetic
+ENV ROS2_DISTRO=${ROS2_DISTRO}
+
+# Runtime shared libs that Noetic ros_comm + ros1_bridge dynamically
+# link against, but ros:${ROS2_DISTRO}-ros-base does not ship by
+# default. Identified empirically by ldd-ing /opt/ros/noetic/lib/*.so
+# and /bridge_ws/install/.../parameter_bridge from the builder image.
+#
+# Two distro splits:
+#   - Boost major version: 1.74.0 on jammy (humble), 1.83.0 on noble (jazzy)
+#   - time_t-64 transition (t64 suffix): noble adds t64 to some
+#     packages (libboost-chrono, libpocofoundation, libgpgme); jammy
+#     uses unsuffixed names. libboost-filesystem / -thread /
+#     -program-options happen to NOT carry t64 even on noble.
+#
+# If a future ldd surfaces another missing .so, add the minimum
+# package here. Do NOT regress to bulk-installing the full builder
+# dep set; that defeats the lean-runtime split.
+# hadolint ignore=SC2046
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        $(case "${ROS2_DISTRO}" in \
+            jazzy) echo \
+                libboost-chrono1.83.0t64 \
+                libboost-filesystem1.83.0 \
+                libboost-program-options1.83.0 \
+                libboost-thread1.83.0 \
+                libpocofoundation80t64 \
+                libgpgme11t64 \
+                ;; \
+            humble) echo \
+                libboost-chrono1.74.0 \
+                libboost-filesystem1.74.0 \
+                libboost-program-options1.74.0 \
+                libboost-thread1.74.0 \
+                libpocofoundation80 \
+                libgpgme11 \
+                ;; \
+            *) echo "unsupported ROS2_DISTRO: ${ROS2_DISTRO}" >&2; exit 1 ;; \
+        esac) \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pull the install trees out of builder. /opt/ros/noetic is the Noetic
+# catkin install space; /bridge_ws/install is the colcon install for
+# ros1_bridge. No build tools, no source, no catkin/colcon intermediate.
+COPY --from=builder /opt/ros/noetic /opt/ros/noetic
+COPY --from=builder /bridge_ws/install /bridge_ws/install
+
+ARG BRIDGE_FILE="bridge.yaml"
+
+COPY --chmod=0755 script/ /
+COPY --chmod=0644 "${BRIDGE_FILE}" /bridge.yaml
+COPY --chmod=0644 config/demo_bridge.yaml /demo_bridge.yaml
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["ros2", "run", "ros1_bridge", "parameter_bridge"]
