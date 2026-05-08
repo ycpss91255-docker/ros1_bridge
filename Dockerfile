@@ -1,7 +1,13 @@
-# ROS2_DISTRO is required (no default) — caller must supply via build_arg.
-# main.yaml provides it via the matrix; setup.conf via [build] arg_4;
-# direct `docker build` requires `--build-arg ROS2_DISTRO=humble|jazzy`.
-ARG ROS2_DISTRO
+# ROS2_DISTRO selects the ROS 2 base. Default `jazzy` matches
+# setup.conf's [build] arg_4 default (which `./build.sh` and
+# `./run.sh` always pass through), so direct `docker build` without
+# `--build-arg ROS2_DISTRO=...` also works. CI overrides via the
+# matrix in .github/workflows/main.yaml. Setting a default here
+# silences BuildKit's `InvalidDefaultArgInFrom` warning that fired
+# when `${IMAGE}` resolved to `ros:-ros-base` at parse-time default
+# evaluation. Invalid values still fail explicitly inside the
+# `case "${ROS2_DISTRO}"` blocks below (pip + runtime apt branches).
+ARG ROS2_DISTRO=jazzy
 ARG IMAGE="ros:${ROS2_DISTRO}-ros-base"
 ARG TEST_TOOLS_IMAGE="test-tools:local"
 
