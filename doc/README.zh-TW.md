@@ -5,8 +5,12 @@
 > **TL;DR** — ROS 1/2 bridge 容器，**同時支援 Humble + Jazzy**，base image 為 `ros:${ROS2_DISTRO}-ros-base`，**Noetic `ros_comm` 從原始碼建置** + **`ros1_bridge` 從原始碼建置**（因為 Foxy / Noetic apt 在 focal 之外已經沒有套件）。透過 `ARG ROS2_DISTRO=humble|jazzy` 選擇目標。base image 為 multi-arch，支援 Jetson (arm64)。完整 migration rationale 見 [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53)。
 >
 > ```bash
-> ./build.sh && ./run.sh           # 預設 ROS2_DISTRO=humble（在 setup.conf [build] arg_4 設定）
+> ln -sf config/demo_bridge.yaml bridge.yaml   # 挑一份 bridge 設定（gitignored、每個 clone 各自選）。略過則走 demo fallback。
+> ./build.sh && ./run.sh                       # 預設 ROS2_DISTRO=humble（在 setup.conf [build] arg_4 設定）
 > ```
+>
+> 略過 `ln -sf` 也沒關係 — Dockerfile 會自動 fallback 到
+> `config/demo_bridge.yaml`。完整可選設定見 [Bridge 設定](#bridge-設定)。
 
 ---
 
@@ -36,6 +40,10 @@
 ## 快速開始
 
 ```bash
+# 0.（選用）挑一份 bridge 設定。略過則 fallback 到
+#    config/demo_bridge.yaml — 詳見下方「Bridge 設定」。
+ln -sf config/demo_bridge.yaml bridge.yaml
+
 # 1. 建置
 ./build.sh
 
@@ -117,13 +125,15 @@ docker run --rm --network=host ros1_bridge:runtime
 
 ## Bridge 設定
 
-`bridge.yaml` **不納入版本控管** — 從 `config/` 挑一份設定檔，建置前用
-symlink 指過去：
+`bridge.yaml` **不納入版本控管** — 它是 per-clone symlink，由操作者從
+`config/` 挑一份指過去。建置時若 symlink 不存在或斷裂，Dockerfile 會
+自動 fallback 到 `config/demo_bridge.yaml`（修 [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)），
+所以 fresh clone 也能直接 build。要挑其他設定：
 
 ```bash
 ln -sf config/scan_bridge.yaml bridge.yaml          # LaserScan
 ln -sf config/release_bridge.yaml bridge.yaml       # RealSense camera + depth
-ln -sf config/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter demo
+ln -sf config/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter demo（也是 fallback 預設）
 ln -sf config/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 service demo
 ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service demo
 ```
