@@ -5,7 +5,7 @@
 > **TL;DR** — ROS 1/2 bridge container with **dual Humble + Jazzy targets** built from `ros:${ROS2_DISTRO}-ros-base` plus **source-built Noetic `ros_comm`** + **source-built `ros1_bridge`** (since Foxy / Noetic apt is no longer available outside focal). Select target via `ARG ROS2_DISTRO=humble|jazzy`. Multi-arch base supports Jetson (arm64). See [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) for the full migration rationale.
 >
 > ```bash
-> ./build.sh && ./run.sh           # default ROS2_DISTRO=jazzy (set via setup.conf [build] arg_4)
+> ./build.sh && ./run.sh           # default ROS2_DISTRO=humble (set via setup.conf [build] arg_4)
 > ```
 
 ---
@@ -14,6 +14,7 @@
 
 - [Features](#features)
 - [Quick Start](#quick-start)
+- [Switch ROS 2 distro](#switch-ros-2-distro)
 - [Usage](#usage)
 - [Bridge Configuration](#bridge-configuration)
 - [Demo](#demo)
@@ -29,8 +30,6 @@
 - **Jetson (arm64) support**: multi-arch base image (unlike `osrf/ros:foxy-ros1-bridge`, which is amd64 only)
 - **Parameter bridge**: configurable topic bridging via YAML
 - **builder / devel / runtime split**: `builder` stage source-builds Noetic + `ros1_bridge` keeping the source trees in `/noetic_ws/src/` and `/bridge_ws/src/ros1_bridge/`; `devel` (`FROM builder`) keeps that source for in-container rebuild / debug + drops into a shell (`CMD bash`); `runtime` (`FROM ${IMAGE}` — NOT inheriting devel) is lean, only `COPY --from=builder` the install trees + auto-starts `parameter_bridge` from `/bridge.yaml`
-- **Dual entrypoints**: `/entrypoint.sh` (sources both ROS distros + `rosparam load /bridge.yaml`) and `/ros_entrypoint.sh` (ROS env only, matches osrf convention)
-- **Smoke Test**: Bats tests verify both ROS environments and bridge availability
 - **Docker Compose**: single `compose.yaml` for build and run
 - **Example configs**: includes scan and camera bridge configurations
 
@@ -46,6 +45,39 @@
 # 3. Enter running container
 ./exec.sh
 ```
+
+## Switch ROS 2 distro
+
+Default is `humble` (jammy 22.04). To switch to `jazzy` (noble 24.04):
+
+**Option 1 (recommended): edit `setup.conf`.** Change the `[build]` section's `arg_4`:
+
+```ini
+[build]
+arg_4 = ROS2_DISTRO=jazzy
+```
+
+Then rebuild. `setup.sh` hashes `setup.conf` into `.env`'s `SETUP_CONF_HASH`,
+so `./build.sh` / `./run.sh` automatically detect the change and regenerate
+`.env` + `compose.yaml`. The image tag (`yunchien/ros1_bridge:devel` etc.)
+is unchanged across distros — switching rebuilds in place.
+
+```bash
+./build.sh           # picks up the new ROS2_DISTRO from setup.conf
+./run.sh
+```
+
+**Option 2: pass `--build-arg` for one-off direct `docker build`.** Bypasses
+`./build.sh`, won't update `.env` / `compose.yaml`:
+
+```bash
+docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
+```
+
+CI builds both distros in parallel via the matrix in `.github/workflows/main.yaml`,
+so a setup.conf change only affects local builds — published images at
+`ghcr.io/ycpss91255-docker/ros1_bridge-{humble,jazzy}` come from the matrix
+regardless of what `setup.conf` says.
 
 ## Usage
 

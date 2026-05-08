@@ -1,13 +1,15 @@
-# ROS2_DISTRO selects the ROS 2 base. Default `jazzy` matches
-# setup.conf's [build] arg_4 default (which `./build.sh` and
-# `./run.sh` always pass through), so direct `docker build` without
-# `--build-arg ROS2_DISTRO=...` also works. CI overrides via the
-# matrix in .github/workflows/main.yaml. Setting a default here
-# silences BuildKit's `InvalidDefaultArgInFrom` warning that fired
-# when `${IMAGE}` resolved to `ros:-ros-base` at parse-time default
-# evaluation. Invalid values still fail explicitly inside the
-# `case "${ROS2_DISTRO}"` blocks below (pip + runtime apt branches).
-ARG ROS2_DISTRO=jazzy
+# ROS2_DISTRO selects the ROS 2 base (humble | jazzy). Default
+# `humble` matches setup.conf's [build] arg_4 default, which
+# `./build.sh` and `./run.sh` always pass through, so direct
+# `docker build` without `--build-arg ROS2_DISTRO=...` also works.
+# CI overrides via the matrix in .github/workflows/main.yaml.
+# Setting a default here silences BuildKit's `InvalidDefaultArgInFrom`
+# warning that fired when `${IMAGE}` resolved to `ros:-ros-base` at
+# parse-time default evaluation. Invalid values still fail explicitly
+# inside the `case "${ROS2_DISTRO}"` blocks below (pip + runtime apt
+# branches). To switch to jazzy, edit setup.conf [build] arg_4 (see
+# README "Switch ROS 2 distro").
+ARG ROS2_DISTRO=humble
 ARG IMAGE="ros:${ROS2_DISTRO}-ros-base"
 ARG TEST_TOOLS_IMAGE="test-tools:local"
 
