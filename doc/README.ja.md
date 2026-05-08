@@ -1,5 +1,7 @@
 # ROS 1 Bridge Docker Environment
 
+[![CI](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml/badge.svg)](https://github.com/ycpss91255-docker/ros1_bridge/actions/workflows/main.yaml) [![License](https://img.shields.io/badge/License-Apache--2.0-blue?style=flat-square)](../LICENSE)
+
 **[English](../README.md)** | **[繁體中文](README.zh-TW.md)** | **[简体中文](README.zh-CN.md)** | **[日本語](README.ja.md)**
 
 > **TL;DR** — ROS 1/2 ブリッジコンテナ。**Humble + Jazzy のデュアルターゲット**で、ベースイメージは `ros:${ROS2_DISTRO}-ros-base`、**Noetic `ros_comm` をソースビルド**＋**`ros1_bridge` をソースビルド**します（Foxy / Noetic apt は focal 以外で提供されていないため）。`ARG ROS2_DISTRO=humble|jazzy` でターゲットを選択。base image は multi-arch のため Jetson (arm64) に対応。詳細な migration rationale は [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) を参照。
