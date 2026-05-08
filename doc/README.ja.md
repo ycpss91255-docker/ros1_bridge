@@ -5,8 +5,13 @@
 > **TL;DR** — ROS 1/2 ブリッジコンテナ。**Humble + Jazzy のデュアルターゲット**で、ベースイメージは `ros:${ROS2_DISTRO}-ros-base`、**Noetic `ros_comm` をソースビルド**＋**`ros1_bridge` をソースビルド**します（Foxy / Noetic apt は focal 以外で提供されていないため）。`ARG ROS2_DISTRO=humble|jazzy` でターゲットを選択。base image は multi-arch のため Jetson (arm64) に対応。詳細な migration rationale は [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) を参照。
 >
 > ```bash
-> ./build.sh && ./run.sh           # デフォルト ROS2_DISTRO=humble（setup.conf [build] arg_4 で設定）
+> ln -sf config/demo_bridge.yaml bridge.yaml   # ブリッジ設定を選択（gitignored、clone 単位）。スキップしても demo にフォールバック。
+> ./build.sh && ./run.sh                       # デフォルト ROS2_DISTRO=humble（setup.conf [build] arg_4 で設定）
 > ```
+>
+> `ln -sf` ステップをスキップしても問題ありません — Dockerfile が
+> 自動的に `config/demo_bridge.yaml` にフォールバックします。利用可能な
+> 設定一覧は [ブリッジ設定](#ブリッジ設定) を参照。
 
 ---
 
@@ -36,6 +41,10 @@
 ## クイックスタート
 
 ```bash
+# 0.（任意）ブリッジ設定を選択。スキップした場合は
+#    config/demo_bridge.yaml にフォールバック — 下記「ブリッジ設定」参照。
+ln -sf config/demo_bridge.yaml bridge.yaml
+
 # 1. ビルド
 ./build.sh
 
@@ -119,13 +128,16 @@ docker run --rm --network=host ros1_bridge:runtime
 
 ## ブリッジ設定
 
-`bridge.yaml` は **バージョン管理されません** — `config/` から設定を選び、
-ビルド前に symlink を張ってください：
+`bridge.yaml` は **バージョン管理されません** — オペレーターが `config/`
+から選んで張る per-clone symlink です。ビルド時に symlink が存在しない
+または壊れている場合、Dockerfile は `config/demo_bridge.yaml` に自動で
+フォールバックします（[#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65) 修正）。
+したがって fresh clone でもそのままビルド可能です。別の設定を選ぶには：
 
 ```bash
 ln -sf config/scan_bridge.yaml bridge.yaml          # LaserScan
 ln -sf config/release_bridge.yaml bridge.yaml       # RealSense camera + depth
-ln -sf config/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter デモ
+ln -sf config/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter デモ（フォールバックの既定でもある）
 ln -sf config/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 サービスデモ
 ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 サービスデモ
 ```

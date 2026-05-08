@@ -120,7 +120,22 @@ FROM builder AS devel
 ARG BRIDGE_FILE="bridge.yaml"
 
 COPY --chmod=0755 script/ /
-COPY --chmod=0644 "${BRIDGE_FILE}" /bridge.yaml
+# bridge.yaml is gitignored (per-clone operator pick from config/, see
+# README "Bridge Configuration"). When the symlink is missing or broken
+# on a fresh clone, fall back to config/demo_bridge.yaml so the doc'd
+# Quick Start works without first creating the symlink. An explicit
+# `--build-arg BRIDGE_FILE=config/<picked>.yaml` still wins; an explicit
+# override that does not resolve fails loudly. Closes #65.
+RUN --mount=type=bind,source=.,target=/ctx \
+    if [ -f "/ctx/${BRIDGE_FILE}" ]; then \
+        install -m 0644 "/ctx/${BRIDGE_FILE}" /bridge.yaml; \
+    elif [ "${BRIDGE_FILE}" = "bridge.yaml" ]; then \
+        echo "[Dockerfile] bridge.yaml symlink missing or broken; falling back to config/demo_bridge.yaml" >&2; \
+        install -m 0644 /ctx/config/demo_bridge.yaml /bridge.yaml; \
+    else \
+        echo "[Dockerfile] BRIDGE_FILE='${BRIDGE_FILE}' is not a readable file in the build context" >&2; \
+        exit 1; \
+    fi
 COPY --chmod=0644 config/demo_bridge.yaml /demo_bridge.yaml
 
 ENTRYPOINT ["/ros_entrypoint.sh"]
@@ -193,7 +208,17 @@ COPY --from=builder /bridge_ws/install /bridge_ws/install
 ARG BRIDGE_FILE="bridge.yaml"
 
 COPY --chmod=0755 script/ /
-COPY --chmod=0644 "${BRIDGE_FILE}" /bridge.yaml
+# Same bridge.yaml fallback rule as the devel stage above. Closes #65.
+RUN --mount=type=bind,source=.,target=/ctx \
+    if [ -f "/ctx/${BRIDGE_FILE}" ]; then \
+        install -m 0644 "/ctx/${BRIDGE_FILE}" /bridge.yaml; \
+    elif [ "${BRIDGE_FILE}" = "bridge.yaml" ]; then \
+        echo "[Dockerfile] bridge.yaml symlink missing or broken; falling back to config/demo_bridge.yaml" >&2; \
+        install -m 0644 /ctx/config/demo_bridge.yaml /bridge.yaml; \
+    else \
+        echo "[Dockerfile] BRIDGE_FILE='${BRIDGE_FILE}' is not a readable file in the build context" >&2; \
+        exit 1; \
+    fi
 COPY --chmod=0644 config/demo_bridge.yaml /demo_bridge.yaml
 
 ENTRYPOINT ["/entrypoint.sh"]

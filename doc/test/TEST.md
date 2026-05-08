@@ -1,6 +1,6 @@
 # TEST.md
 
-**48 tests** total (23 in `ros_env.bats` + 25 in `script_help.bats`).
+**49 tests** total (24 in `ros_env.bats` + 25 in `script_help.bats`).
 
 ## test/smoke/ros_env.bats
 
@@ -21,11 +21,12 @@
 |------|-------------|
 | `ros1_bridge package is available` | `ros2 pkg list` includes ros1_bridge after sourcing `/bridge_ws/install/setup.bash` (source-built; not in `/opt/ros/${ROS2_DISTRO}/share`) |
 
-### Bridge config (7)
+### Bridge config (8)
 
 | Test | Description |
 |------|-------------|
 | `bridge.yaml exists` | `/bridge.yaml` exists |
+| `bridge.yaml is non-empty (fresh-clone fallback regression #65)` | `/bridge.yaml` is non-empty; covers the Dockerfile-internal fallback to `config/demo_bridge.yaml` when no `bridge.yaml` symlink exists in build context (closes [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)) |
 | `entrypoint.sh exists and is executable` | `/entrypoint.sh` is executable |
 | `ros_entrypoint.sh exists and is executable` | `/ros_entrypoint.sh` is executable |
 | `ros_entrypoint.sh sources both ROS environments` | Running `/ros_entrypoint.sh` yields `ROS_DISTRO=${ROS2_DISTRO}` (ROS 1 sourced first, then ROS 2 + `/bridge_ws/install`) |

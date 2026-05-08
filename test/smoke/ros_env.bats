@@ -52,6 +52,19 @@ setup() {
     assert [ -f "/bridge.yaml" ]
 }
 
+@test "bridge.yaml is non-empty (fresh-clone fallback regression #65)" {
+    # Pre-#65, the Dockerfile COPYed ${BRIDGE_FILE} (default `bridge.yaml`,
+    # gitignored per-clone symlink) at build time. On a fresh clone with no
+    # symlink and no `--build-arg BRIDGE_FILE` override the build failed at
+    # the COPY step with `failed to compute cache key: "/bridge.yaml": not
+    # found`. Post-fix, the Dockerfile uses `RUN --mount=type=bind` to fall
+    # back to config/demo_bridge.yaml when the symlink is absent.
+    #
+    # If we got here at all, the build succeeded; this assertion catches
+    # the corner case where the bind-mount cp produced an empty file.
+    assert [ -s "/bridge.yaml" ]
+}
+
 @test "entrypoint.sh exists and is executable" {
     assert [ -x "/entrypoint.sh" ]
 }
