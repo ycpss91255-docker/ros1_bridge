@@ -39,6 +39,23 @@ jobs:
         BRIDGE_FILE=config/scan_bridge.yaml
         ROS2_DISTRO=${{ matrix.ros2_distro }}
 
+  # Stable umbrella check that aggregates the matrix shards into a single
+  # status name. Branch protection requires only `ci-summary` so adding
+  # a new ROS 2 distro to the matrix above does not require updating the
+  # protection rule each time. Marked `if: always()` so the job runs even
+  # when shards fail, and asserts every dependency was a success.
+  ci-summary:
+    needs: call-docker-build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all matrix shards succeeded
+        env:
+          RESULT: ${{ needs.call-docker-build.result }}
+        run: |
+          echo "call-docker-build result: ${RESULT}"
+          test "${RESULT}" = "success"
+
   call-release:
     needs: call-docker-build
     if: startsWith(github.ref, 'refs/tags/')
