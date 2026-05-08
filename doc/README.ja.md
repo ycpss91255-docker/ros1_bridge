@@ -28,7 +28,7 @@
 - **なぜソースビルドか**：Open Robotics は focal 以外で `ros-noetic-*` debs を公開しておらず、`ros-jazzy-ros1-bridge` も存在しません。`humble|jazzy ↔ foxy ↔ noetic` の chained DDS による回避策は、Fast-DDS のメジャーバージョン差 + REP-2011 type-hash 不一致により実測で破綻しました。詳細は [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) を参照。
 - **Jetson (arm64) 対応**：base image が multi-arch（amd64 のみの `osrf/ros:foxy-ros1-bridge` と異なる）
 - **Parameter bridge**：YAML 設定で topic ブリッジを構成可能
-- **devel / runtime の分離**：`devel` stage はデバッグ用のプレーンシェル（`CMD bash`）、`runtime` stage は `/bridge.yaml` に基づき `parameter_bridge` を自動起動
+- **builder / devel / runtime の分離**:`builder` stage は Noetic + `ros1_bridge` をソースビルドし**ソースツリーを保持**(`/noetic_ws/src/` と `/bridge_ws/src/ros1_bridge/`);`devel` (`FROM builder`) はソースを継承しコンテナ内での rebuild / debug を可能に、デフォルトでシェル起動 (`CMD bash`);`runtime` (`FROM ${IMAGE}`、**devel を継承しない**) はリーン版で `COPY --from=builder` で install ツリーのみ取り込み、`parameter_bridge` を `/bridge.yaml` 基準で自動起動
 - **デュアル entrypoint**：`/entrypoint.sh`（両 ROS を source + `rosparam load /bridge.yaml`）と `/ros_entrypoint.sh`（ROS 環境のみ、osrf 慣習互換）
 - **Smoke Test**：Bats テストで両 ROS 環境と bridge の可用性を検証
 - **Docker Compose**：`compose.yaml` 一つでビルドと実行を管理
@@ -192,11 +192,14 @@ graph TD
     EXT4["github.com/ros/...\n(noetic ros_comm tarballs)"]
     EXT5["github.com/ros2/ros1_bridge\n(master)"]
 
-    EXT3 --> devel["devel\nソースビルド /opt/ros/noetic + /bridge_ws\nCMD bash"]
-    EXT4 --> devel
-    EXT5 --> devel
+    EXT3 --> builder["builder\nソースビルド /opt/ros/noetic + /bridge_ws\n(ソースツリー保持)"]
+    EXT4 --> builder
+    EXT5 --> builder
 
-    devel --> runtime["runtime\nCMD ros2 run ros1_bridge parameter_bridge"]
+    builder --> devel["devel = builder + scripts\nCMD bash;ソースで rebuild 可能"]
+
+    EXT3 --> runtime["runtime\nリーン:COPY --from=builder install ツリー\nCMD ros2 run ros1_bridge parameter_bridge"]
+    builder -.->|COPY --from=builder /opt/ros/noetic + /bridge_ws/install| runtime
 
     EXT1 --> test["test (一時的)\nshellcheck + hadolint + bats smoke"]
     devel --> test

@@ -1,6 +1,6 @@
 # TEST.md
 
-**47 tests** total (22 in `ros_env.bats` + 25 in `script_help.bats`).
+**48 tests** total (23 in `ros_env.bats` + 25 in `script_help.bats`).
 
 ## test/smoke/ros_env.bats
 
@@ -21,7 +21,7 @@
 |------|-------------|
 | `ros1_bridge package is available` | `ros2 pkg list` includes ros1_bridge after sourcing `/bridge_ws/install/setup.bash` (source-built; not in `/opt/ros/${ROS2_DISTRO}/share`) |
 
-### Bridge config (6)
+### Bridge config (7)
 
 | Test | Description |
 |------|-------------|
@@ -31,6 +31,7 @@
 | `ros_entrypoint.sh sources both ROS environments` | Running `/ros_entrypoint.sh` yields `ROS_DISTRO=${ROS2_DISTRO}` (ROS 1 sourced first, then ROS 2 + `/bridge_ws/install`) |
 | `ros_entrypoint.sh exposes ros2 command` | `ros2` binary is on `PATH` after entrypoint |
 | `entrypoint.sh skips rosparam load when roscore unreachable` | `timeout 2 rosparam list` guards the `rosparam load` so a missing roscore doesn't hang container boot |
+| `entrypoint.sh handles --help in CMD without source-propagation error` | Regression for #59: `source FILE --` prevents catkin's `_setup_util.py "$@"` from seeing CMD's `--help` and emitting argparse usage that breaks the temp-file source step |
 
 ### Demo helpers (9)
 

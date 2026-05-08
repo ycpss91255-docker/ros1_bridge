@@ -28,7 +28,7 @@
 - **Why source-build**: Open Robotics never published `ros-noetic-*` debs outside focal, and `ros-jazzy-ros1-bridge` does not exist. The chained DDS workaround (`humble|jazzy ↔ foxy ↔ noetic`) was empirically ruled out due to Fast-DDS major version skew + REP-2011 type-hash mismatches — see [#53](https://github.com/ycpss91255-docker/ros1_bridge/issues/53) for the full investigation.
 - **Jetson (arm64) support**: multi-arch base image (unlike `osrf/ros:foxy-ros1-bridge`, which is amd64 only)
 - **Parameter bridge**: configurable topic bridging via YAML
-- **devel / runtime split**: `devel` stage is a plain shell (`CMD bash`) for debugging; `runtime` stage auto-starts `parameter_bridge` from `/bridge.yaml`
+- **builder / devel / runtime split**: `builder` stage source-builds Noetic + `ros1_bridge` keeping the source trees in `/noetic_ws/src/` and `/bridge_ws/src/ros1_bridge/`; `devel` (`FROM builder`) keeps that source for in-container rebuild / debug + drops into a shell (`CMD bash`); `runtime` (`FROM ${IMAGE}` — NOT inheriting devel) is lean, only `COPY --from=builder` the install trees + auto-starts `parameter_bridge` from `/bridge.yaml`
 - **Dual entrypoints**: `/entrypoint.sh` (sources both ROS distros + `rosparam load /bridge.yaml`) and `/ros_entrypoint.sh` (ROS env only, matches osrf convention)
 - **Smoke Test**: Bats tests verify both ROS environments and bridge availability
 - **Docker Compose**: single `compose.yaml` for build and run
@@ -189,11 +189,14 @@ graph TD
     EXT4["github.com/ros/...\n(noetic ros_comm tarballs)"]
     EXT5["github.com/ros2/ros1_bridge\n(master)"]
 
-    EXT3 --> devel["devel\nsource-built /opt/ros/noetic + /bridge_ws\nCMD bash"]
-    EXT4 --> devel
-    EXT5 --> devel
+    EXT3 --> builder["builder\nsource-built /opt/ros/noetic + /bridge_ws\n(source trees kept)"]
+    EXT4 --> builder
+    EXT5 --> builder
 
-    devel --> runtime["runtime\nCMD ros2 run ros1_bridge parameter_bridge"]
+    builder --> devel["devel = builder + scripts\nCMD bash; source available for rebuild"]
+
+    EXT3 --> runtime["runtime\nlean: COPY --from=builder install only\nCMD ros2 run ros1_bridge parameter_bridge"]
+    builder -.->|COPY --from=builder /opt/ros/noetic + /bridge_ws/install| runtime
 
     EXT1 --> test["test (ephemeral)\nshellcheck + hadolint + bats smoke"]
     devel --> test
