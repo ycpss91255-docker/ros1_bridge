@@ -26,12 +26,12 @@ jobs:
       fail-fast: false
       matrix:
         ros2_distro: [humble, jazzy]
-    uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v0.19.0
+    uses: ycpss91255-docker/template/.github/workflows/build-worker.yaml@v0.20.1
     with:
       image_name: ros1_bridge-${{ matrix.ros2_distro }}
       build_runtime: true
       platforms: linux/amd64,linux/arm64
-      test_tools_version: v0.11.0
+      test_tools_version: v0.20.1
       # bridge.yaml is gitignored (per-clone symlink chosen by operator;
       # see README "Bridge Configuration"). CI has no symlink, so override
       # the Dockerfile ARG default to point at one of the tracked configs.
@@ -63,6 +63,6 @@ jobs:
       fail-fast: false
       matrix:
         ros2_distro: [humble, jazzy]
-    uses: ycpss91255-docker/template/.github/workflows/release-worker.yaml@v0.19.0
+    uses: ycpss91255-docker/template/.github/workflows/release-worker.yaml@v0.20.1
     with:
       archive_name_prefix: ros1_bridge-${{ matrix.ros2_distro }}
