@@ -38,7 +38,7 @@ jobs:
       # fallback path under continuous regression coverage.
       build_args: |
         ROS2_DISTRO=${{ matrix.ros2_distro }}
-        RUNTIME_SMOKE_CMD=source /opt/ros/install/setup.bash && command -v ros1_bridge
+        RUNTIME_SMOKE_CMD=. /opt/ros/install/setup.bash && command -v ros1_bridge
 
   # Stable umbrella check that aggregates the matrix shards into a single
   # status name. Branch protection requires only `ci-summary` so adding
