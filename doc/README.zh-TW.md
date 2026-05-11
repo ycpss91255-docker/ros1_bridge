@@ -77,21 +77,20 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 預設 `humble`（jammy 22.04）。要切到 `jazzy`（noble 24.04）：
 
-**方式 1（推薦）：編輯 `setup.conf`**。改 `[build]` section 的 `arg_4`：
-
-```ini
-[build]
-arg_4 = ROS2_DISTRO=jazzy
-```
-
-然後 rebuild。`setup.sh` 會把 `setup.conf` hash 進 `.env` 的 `SETUP_CONF_HASH`，
-所以 `./build.sh` / `./run.sh` 會自動偵測變動並重新生成 `.env` + `compose.yaml`。
-image tag（`yunchien/ros1_bridge:devel` 等）跨 distro 不變，切換 = 原地 rebuild。
+**方式 1（推薦）：用 `setup.sh set` CLI**
 
 ```bash
-./build.sh           # 從 setup.conf 抓新的 ROS2_DISTRO
-./run.sh
+./setup.sh set build.arg_4 ROS2_DISTRO=jazzy
+./build.sh && ./run.sh
 ```
+
+`set` 把值寫進 `setup.conf [build] arg_4`（section / key 不存在會建好）。
+`./build.sh` 接著透過 `.env` 裡的 `setup.conf` hash 偵測到變動，自動
+重生 `.env` + `compose.yaml` 並 rebuild。image tag（`yunchien/ros1_bridge:devel`
+等）跨 distro 不變，切換 = 原地 rebuild。
+
+要互動式編輯，跑 `./setup_tui.sh`（dialog / whiptail 前端），在 TUI 裡
+改 `[build] arg_4`。
 
 **方式 2：一次性 `--build-arg`（直接 docker build）**。會繞開 `./build.sh`，
 不會更新 `.env` / `compose.yaml`：
