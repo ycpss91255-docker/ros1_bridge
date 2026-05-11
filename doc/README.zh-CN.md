@@ -92,8 +92,9 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 要交互式编辑，跑 `./setup_tui.sh`（dialog / whiptail 前端），在 TUI 里
 改 `[build] arg_4`。
 
-**方式 2：一次性 `--build-arg`（直接 docker build）**。会绕开 `./build.sh`，
-不会更新 `.env` / `compose.yaml`：
+**方式 2：一次性 `--build-arg` override（直接 docker build）**。会绕开
+`./build.sh`，不会更新 `.env` / `compose.yaml`。wrapper 端 `./build.sh
+--build-arg ROS2_DISTRO=jazzy` 待 [base#279](https://github.com/ycpss91255-docker/base/issues/279) 完成：
 
 ```bash
 docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
@@ -110,8 +111,7 @@ setup.conf 改动只影响本地 build；发布到 `ghcr.io/ycpss91255-docker/ro
 ```bash
 ./build.sh                       # 构建 devel（默认）
 ./build.sh test                  # 构建含 smoke test
-
-docker compose build devel       # 等效命令
+./build.sh runtime               # 构建精简的 runtime image
 ```
 
 ### 执行
@@ -123,15 +123,13 @@ docker compose build devel       # 等效命令
 ./run.sh -d                      # devel 后台运行，之后用 ./exec.sh 进入
 ```
 
-`runtime`（自动启动 bridge）目前需要直接用 `docker run` —— 自动生成的
-`compose.yaml` 尚未 emit `runtime` service（template 端追踪中）：
+`runtime`（通过 Dockerfile `CMD` 自动启动 bridge）：
 
 ```bash
-docker build --target runtime -t ros1_bridge:runtime .
-docker run --rm --network=host ros1_bridge:runtime
-# entrypoint 会 source 两个 ROS、rosparam load /bridge.yaml，
-# 然后 exec `ros2 run ros1_bridge parameter_bridge`。
-# 前提：host network 上已启动 roscore。
+./run.sh -t runtime              # 启动 runtime service。entrypoint 会 source 两个
+                                 # ROS、rosparam load /bridge.yaml，然后 exec
+                                 # `ros2 run ros1_bridge parameter_bridge`。
+                                 # 前提：host network 上已启动 roscore。
 ```
 
 ### 进入已启动的容器
@@ -168,7 +166,9 @@ ln -sf config/ros1_bridge/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 
 > `ros1_bridge`，runtime 会打印 `no conversion for type ...`，除非在 `colcon
 > build` 步骤把对应的 ROS 1 / ROS 2 packages 加进去重新编译 image。
 
-不想改 symlink 也可以直接 build 时覆盖：
+不想改 symlink 也可以直接 build 时覆盖。wrapper 端 `./build.sh --build-arg
+BRIDGE_FILE=...` 待 [base#279](https://github.com/ycpss91255-docker/base/issues/279) 完成；在那之前直接用
+`docker compose build`：
 
 ```bash
 docker compose build --build-arg BRIDGE_FILE=config/ros1_bridge/release_bridge.yaml devel

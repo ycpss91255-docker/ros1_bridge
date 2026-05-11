@@ -94,8 +94,9 @@ unchanged across distros — switching rebuilds in place.
 For an interactive picker, run `./setup_tui.sh` (dialog / whiptail
 frontend) and change `[build] arg_4` there.
 
-**Option 2: pass `--build-arg` for one-off direct `docker build`.** Bypasses
-`./build.sh`, won't update `.env` / `compose.yaml`:
+**Option 2: one-off `--build-arg` override via direct `docker build`.** Bypasses
+`./build.sh`, won't update `.env` / `compose.yaml`. Wrapper-side
+`./build.sh --build-arg ROS2_DISTRO=jazzy` is pending [base#279](https://github.com/ycpss91255-docker/base/issues/279):
 
 ```bash
 docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
@@ -113,8 +114,7 @@ regardless of what `setup.conf` says.
 ```bash
 ./build.sh                       # Build devel (default)
 ./build.sh test                  # Build with smoke tests
-
-docker compose build devel     # Equivalent
+./build.sh runtime               # Build the lean runtime image
 ```
 
 ### Run
@@ -126,16 +126,13 @@ Two modes, picked by stage target:
 ./run.sh -d                      # devel detached, join via ./exec.sh
 ```
 
-For `runtime` (auto-bridge) you currently need a direct `docker run` — the
-auto-generated `compose.yaml` does not yet emit a `runtime` service
-(tracked upstream in template):
+For `runtime` (auto-starts the bridge via the Dockerfile `CMD`):
 
 ```bash
-docker build --target runtime -t ros1_bridge:runtime .
-docker run --rm --network=host ros1_bridge:runtime
-# entrypoint sources both ROS distros, rosparam loads /bridge.yaml,
-# then exec's `ros2 run ros1_bridge parameter_bridge`.
-# Requires roscore already running on the host network.
+./run.sh -t runtime              # Start runtime service. Entrypoint sources both
+                                 # ROS distros, rosparam loads /bridge.yaml, then
+                                 # exec's `ros2 run ros1_bridge parameter_bridge`.
+                                 # Requires roscore already running on the host network.
 ```
 
 ### Enter running container
@@ -174,7 +171,9 @@ ln -sf config/ros1_bridge/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 
 > conversion for type ...` at runtime unless the image is rebuilt with
 > the matching ROS 1 / ROS 2 packages added to the `colcon build` step.
 
-Override at build time without changing the symlink:
+Override at build time without changing the symlink. Wrapper-side
+`./build.sh --build-arg BRIDGE_FILE=...` is pending [base#279](https://github.com/ycpss91255-docker/base/issues/279);
+until then use direct `docker compose build`:
 
 ```bash
 docker compose build --build-arg BRIDGE_FILE=config/ros1_bridge/release_bridge.yaml devel
