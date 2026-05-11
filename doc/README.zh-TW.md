@@ -75,9 +75,8 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 ## 切換 ROS 2 distro
 
-預設 `humble`（jammy 22.04）。要切到 `jazzy`（noble 24.04）：
-
-**方式 1（推薦）：用 `setup.sh set` CLI**
+預設 `humble`（jammy 22.04）。要切到 `jazzy`（noble 24.04），透過 CLI
+更新 `setup.conf [build] arg_4`：
 
 ```bash
 ./setup.sh set build.arg_4 ROS2_DISTRO=jazzy
@@ -91,14 +90,6 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 要互動式編輯，跑 `./setup_tui.sh`（dialog / whiptail 前端），在 TUI 裡
 改 `[build] arg_4`。
-
-**方式 2：一次性 `--build-arg` override（直接 docker build）**。會繞開
-`./build.sh`，不會更新 `.env` / `compose.yaml`。wrapper 端 `./build.sh
---build-arg ROS2_DISTRO=jazzy` 待 [base#279](https://github.com/ycpss91255-docker/base/issues/279) 完成：
-
-```bash
-docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
-```
 
 CI 透過 `.github/workflows/main.yaml` 的 matrix 同時 build 兩個 distro，所以
 setup.conf 改動只影響本地 build；發布到 `ghcr.io/ycpss91255-docker/ros1_bridge-{humble,jazzy}`
@@ -165,14 +156,6 @@ ln -sf config/ros1_bridge/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 
 > 兩個 service demo 需要的 type conversion 並未編進這裡從原始碼建置的
 > `ros1_bridge`，runtime 會印 `no conversion for type ...`，除非在 `colcon
 > build` 步驟把對應的 ROS 1 / ROS 2 packages 加進去重新編譯 image。
-
-不想動 symlink 也可以直接 build 時覆蓋。wrapper 端 `./build.sh --build-arg
-BRIDGE_FILE=...` 待 [base#279](https://github.com/ycpss91255-docker/base/issues/279) 完成；在那之前直接用
-`docker compose build`：
-
-```bash
-docker compose build --build-arg BRIDGE_FILE=config/ros1_bridge/release_bridge.yaml devel
-```
 
 ### YAML 格式
 

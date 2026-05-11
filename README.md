@@ -76,9 +76,8 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 ## Switch ROS 2 distro
 
-Default is `humble` (jammy 22.04). To switch to `jazzy` (noble 24.04):
-
-**Option 1 (recommended): use the `setup.sh set` CLI.**
+Default is `humble` (jammy 22.04). To switch to `jazzy` (noble 24.04), update
+`setup.conf [build] arg_4` via the CLI:
 
 ```bash
 ./setup.sh set build.arg_4 ROS2_DISTRO=jazzy
@@ -93,14 +92,6 @@ unchanged across distros — switching rebuilds in place.
 
 For an interactive picker, run `./setup_tui.sh` (dialog / whiptail
 frontend) and change `[build] arg_4` there.
-
-**Option 2: one-off `--build-arg` override via direct `docker build`.** Bypasses
-`./build.sh`, won't update `.env` / `compose.yaml`. Wrapper-side
-`./build.sh --build-arg ROS2_DISTRO=jazzy` is pending [base#279](https://github.com/ycpss91255-docker/base/issues/279):
-
-```bash
-docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
-```
 
 CI builds both distros in parallel via the matrix in `.github/workflows/main.yaml`,
 so a setup.conf change only affects local builds — published images at
@@ -170,14 +161,6 @@ ln -sf config/ros1_bridge/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 
 > into the source-built `ros1_bridge` here either — they will print `no
 > conversion for type ...` at runtime unless the image is rebuilt with
 > the matching ROS 1 / ROS 2 packages added to the `colcon build` step.
-
-Override at build time without changing the symlink. Wrapper-side
-`./build.sh --build-arg BRIDGE_FILE=...` is pending [base#279](https://github.com/ycpss91255-docker/base/issues/279);
-until then use direct `docker compose build`:
-
-```bash
-docker compose build --build-arg BRIDGE_FILE=config/ros1_bridge/release_bridge.yaml devel
-```
 
 ### YAML Format
 

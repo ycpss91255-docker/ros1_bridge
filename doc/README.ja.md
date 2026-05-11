@@ -78,9 +78,8 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 ## ROS 2 distro の切り替え
 
-デフォルトは `humble`（jammy 22.04）。`jazzy`（noble 24.04）に切り替えるには：
-
-**方式 1（推奨）：`setup.sh set` CLI を使用**
+デフォルトは `humble`（jammy 22.04）。`jazzy`（noble 24.04）に切り替えるには、
+CLI 経由で `setup.conf [build] arg_4` を更新します：
 
 ```bash
 ./setup.sh set build.arg_4 ROS2_DISTRO=jazzy
@@ -95,14 +94,6 @@ tag（`yunchien/ros1_bridge:devel` 等）は distro を跨いで変わらず、
 
 対話的に編集する場合は `./setup_tui.sh`（dialog / whiptail フロントエンド）
 を実行し、TUI で `[build] arg_4` を変更します。
-
-**方式 2：単発の `--build-arg` override（直接 docker build）**。`./build.sh` を
-経由せず、`.env` / `compose.yaml` も更新しません。wrapper 側の `./build.sh
---build-arg ROS2_DISTRO=jazzy` は [base#279](https://github.com/ycpss91255-docker/base/issues/279) 完了待ちです：
-
-```bash
-docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
-```
 
 CI は `.github/workflows/main.yaml` の matrix で両 distro を並列 build します。
 setup.conf の変更はローカル build のみに影響し、`ghcr.io/ycpss91255-docker/ros1_bridge-{humble,jazzy}`
@@ -173,14 +164,6 @@ ln -sf config/ros1_bridge/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 
 > ステップで対応する ROS 1 / ROS 2 パッケージを追加してイメージを
 > 再ビルドしない限り、runtime で `no conversion for type ...` が
 > 表示されます。
-
-symlink を変更したくない場合はビルド時に上書き可能。wrapper 側の
-`./build.sh --build-arg BRIDGE_FILE=...` は [base#279](https://github.com/ycpss91255-docker/base/issues/279)
-完了待ちです；それまでは直接 `docker compose build` を使います：
-
-```bash
-docker compose build --build-arg BRIDGE_FILE=config/ros1_bridge/release_bridge.yaml devel
-```
 
 ### YAML フォーマット
 
