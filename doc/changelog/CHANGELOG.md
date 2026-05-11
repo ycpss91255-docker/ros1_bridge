@@ -1,11 +1,16 @@
-**[English](CHANGELOG.md)** | **[繁體中文](CHANGELOG.zh-TW.md)** | **[简体中文](CHANGELOG.zh-CN.md)** | **[日本語](CHANGELOG.ja.md)**
-
 # Changelog
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+- 3 translated READMEs (`doc/README.{zh-TW,zh-CN,ja}.md`) aligned to the canonical `template/` framework that landed for English in #63 + #69: TL;DR moved from inline blockquote to `## TL;DR` H2 section, new `## Overview` H2 (motivation paragraph distilled from the prior TL;DR + the duplicate "Why source-build" Features bullet — now removed in line with English), TOC extended to list `TL;DR` / `Overview` / `Smoke Tests`. Directory Structure tree corrected to point the four wrapper symlinks at `template/script/docker/<name>` (matching actual symlink targets) and the obsolete root `.template_version` row dropped — version tracking has lived in `template/.version` since the v0.16.0 subtree pull. Doc-only; no code, Dockerfile, or workflow changes.
+- Dropped the bogus `[English](CHANGELOG.md) | [繁體中文](CHANGELOG.zh-TW.md) | ...` 4-language link from `doc/changelog/CHANGELOG.md` line 1. The translated CHANGELOG files have never existed; the link has been a dead pointer since repo init. CHANGELOG remains a single English file by design (release-note clarity), unlike README which is genuinely 4-language.
+
+### Fixed
+- Removed the duplicate `[![CI]](...)` badge line from `README.md` (left over from #69, which added the combined CI + License badge line above without removing the prior single-CI line). Now exactly one badge row.
 
 ### Added
 - `LICENSE` (Apache 2.0) and CI / License badges in
