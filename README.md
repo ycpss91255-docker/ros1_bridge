@@ -27,12 +27,12 @@ ROS 1/2 bridge container with dual Humble + Jazzy targets — `ros:${ROS2_DISTRO
 ## TL;DR
 
 ```bash
-ln -sf config/demo_bridge.yaml bridge.yaml   # pick a bridge config (gitignored, per-clone). Skip to use the demo fallback.
+ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml   # pick a bridge config (gitignored, per-clone). Skip to use the demo fallback.
 ./build.sh && ./run.sh                       # default ROS2_DISTRO=humble (set via setup.conf [build] arg_4)
 ```
 
 Skipping the `ln -sf` step is fine — the Dockerfile falls back to
-`config/demo_bridge.yaml` automatically (closes [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)).
+`config/ros1_bridge/demo_bridge.yaml` automatically (closes [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)).
 See [Bridge Configuration](#bridge-configuration) for the full set of available configs.
 
 ## Overview
@@ -61,8 +61,8 @@ for the full migration rationale.
 
 ```bash
 # 0. (Optional) Pick a bridge config. Skipping this falls back to
-#    config/demo_bridge.yaml — see "Bridge Configuration" below.
-ln -sf config/demo_bridge.yaml bridge.yaml
+#    config/ros1_bridge/demo_bridge.yaml — see "Bridge Configuration" below.
+ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 # 1. Build
 ./build.sh
@@ -150,25 +150,25 @@ docker run --rm --network=host ros1_bridge:runtime
 
 `bridge.yaml` is **not committed** — it is a per-clone symlink the operator
 points at one of the configs in `config/`. If the symlink is missing or
-broken at build time, the Dockerfile falls back to `config/demo_bridge.yaml`
+broken at build time, the Dockerfile falls back to `config/ros1_bridge/demo_bridge.yaml`
 (closes [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)),
 so a fresh clone builds out of the box. To pick a different config:
 
 ```bash
-ln -sf config/scan_bridge.yaml bridge.yaml          # LaserScan
-ln -sf config/release_bridge.yaml bridge.yaml       # RealSense camera + depth
-ln -sf config/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter demo (also the fallback)
-ln -sf config/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 service demo
-ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service demo
+ln -sf config/ros1_bridge/scan_bridge.yaml bridge.yaml          # LaserScan
+ln -sf config/ros1_bridge/release_bridge.yaml bridge.yaml       # RealSense camera + depth
+ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter demo (also the fallback)
+ln -sf config/ros1_bridge/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 service demo
+ln -sf config/ros1_bridge/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service demo
 ```
 
 | Config | Bridges |
 |--------|---------|
-| `config/scan_bridge.yaml` | LaserScan `/scan` (sensor-data QoS) |
-| `config/release_bridge.yaml` | RealSense camera + depth topics |
-| `config/demo_bridge.yaml` | Bidirectional `std_msgs/String` chatter (used by `ros{1,2}_server.sh` demos) |
-| `config/demo_services_1to2.yaml` | ROS 1 services exposed to ROS 2 (`/add_two_ints`, `/static_map`) |
-| `config/demo_services_2to1.yaml` | ROS 2 services exposed to ROS 1 (`/get_parameters`) |
+| `config/ros1_bridge/scan_bridge.yaml` | LaserScan `/scan` (sensor-data QoS) |
+| `config/ros1_bridge/release_bridge.yaml` | RealSense camera + depth topics |
+| `config/ros1_bridge/demo_bridge.yaml` | Bidirectional `std_msgs/String` chatter (used by `ros{1,2}_server.sh` demos) |
+| `config/ros1_bridge/demo_services_1to2.yaml` | ROS 1 services exposed to ROS 2 (`/add_two_ints`, `/static_map`) |
+| `config/ros1_bridge/demo_services_2to1.yaml` | ROS 2 services exposed to ROS 1 (`/get_parameters`) |
 
 > The two service demos require type conversions that are not compiled
 > into the source-built `ros1_bridge` here either — they will print `no
@@ -178,7 +178,7 @@ ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service de
 Override at build time without changing the symlink:
 
 ```bash
-docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
+docker compose build --build-arg BRIDGE_FILE=config/ros1_bridge/release_bridge.yaml devel
 ```
 
 ### YAML Format
@@ -217,19 +217,19 @@ use the same pattern: a **server** terminal that owns `roscore` +
 
 | Demo | Terminal 1 (server) | Terminal 2 (client) |
 |------|---------------------|---------------------|
-| A — ROS 1 → ROS 2 | `./exec.sh /ros1_server.sh` | `./exec.sh /ros2_client.sh` |
-| B — ROS 2 → ROS 1 | `./exec.sh /ros2_server.sh` | `./exec.sh /ros1_client.sh` |
+| A — ROS 1 → ROS 2 | `./exec.sh /root/demo/ros1_server.sh` | `./exec.sh /root/demo/ros2_client.sh` |
+| B — ROS 2 → ROS 1 | `./exec.sh /root/demo/ros2_server.sh` | `./exec.sh /root/demo/ros1_client.sh` |
 
 Steps (assuming the container is up via `./run.sh -d`):
 
 ```bash
 # Terminal 1 (server) — pick one demo
-./exec.sh /ros1_server.sh    # Demo A
-./exec.sh /ros2_server.sh    # Demo B
+./exec.sh /root/demo/ros1_server.sh    # Demo A
+./exec.sh /root/demo/ros2_server.sh    # Demo B
 
 # Terminal 2 (client) — matching pair
-./exec.sh /ros2_client.sh    # Demo A
-./exec.sh /ros1_client.sh    # Demo B
+./exec.sh /root/demo/ros2_client.sh    # Demo A
+./exec.sh /root/demo/ros1_client.sh    # Demo B
 ```
 
 Server scripts log every step (`[ros1_server] step N/5: ...`) so it's
@@ -237,7 +237,7 @@ clear when `roscore` and `parameter_bridge` are up. Override the
 published string with `MESSAGE`:
 
 ```bash
-./exec.sh env MESSAGE="hi from ROS 1" /ros1_server.sh
+./exec.sh env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
 ```
 
 `Ctrl+C` on the server terminal tears down `parameter_bridge` and

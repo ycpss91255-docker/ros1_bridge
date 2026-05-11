@@ -27,12 +27,12 @@ ROS 1/2 bridge 容器，**Humble + Jazzy 双 target** — `ros:${ROS2_DISTRO}-ro
 ## TL;DR
 
 ```bash
-ln -sf config/demo_bridge.yaml bridge.yaml   # 挑一份 bridge 配置（gitignored、每个 clone 各自选）。略过则走 demo fallback。
+ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml   # 挑一份 bridge 配置（gitignored、每个 clone 各自选）。略过则走 demo fallback。
 ./build.sh && ./run.sh                       # 默认 ROS2_DISTRO=humble（在 setup.conf [build] arg_4 设置）
 ```
 
 略过 `ln -sf` 也没问题 — Dockerfile 会自动 fallback 到
-`config/demo_bridge.yaml`（修 [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)）。
+`config/ros1_bridge/demo_bridge.yaml`（修 [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)）。
 完整可选配置见 [Bridge 设置](#bridge-设置)。
 
 ## Overview
@@ -60,8 +60,8 @@ multi-arch（amd64 + arm64 含 Jetson）。完整 migration rationale 见
 
 ```bash
 # 0.（可选）挑一份 bridge 配置。略过则 fallback 到
-#    config/demo_bridge.yaml — 详见下方「Bridge 设置」。
-ln -sf config/demo_bridge.yaml bridge.yaml
+#    config/ros1_bridge/demo_bridge.yaml — 详见下方「Bridge 设置」。
+ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 # 1. 构建
 ./build.sh
@@ -146,24 +146,24 @@ docker run --rm --network=host ros1_bridge:runtime
 
 `bridge.yaml` **不纳入版本控制** — 它是 per-clone symlink，由操作者从
 `config/` 挑一份指过去。构建时若 symlink 不存在或断裂，Dockerfile 会
-自动 fallback 到 `config/demo_bridge.yaml`（修 [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)），
+自动 fallback 到 `config/ros1_bridge/demo_bridge.yaml`（修 [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)），
 所以 fresh clone 也能直接 build。要挑其他配置：
 
 ```bash
-ln -sf config/scan_bridge.yaml bridge.yaml          # LaserScan
-ln -sf config/release_bridge.yaml bridge.yaml       # RealSense camera + depth
-ln -sf config/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter demo（也是 fallback 默认）
-ln -sf config/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 service demo
-ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service demo
+ln -sf config/ros1_bridge/scan_bridge.yaml bridge.yaml          # LaserScan
+ln -sf config/ros1_bridge/release_bridge.yaml bridge.yaml       # RealSense camera + depth
+ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter demo（也是 fallback 默认）
+ln -sf config/ros1_bridge/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 service demo
+ln -sf config/ros1_bridge/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service demo
 ```
 
 | 配置 | Bridge 内容 |
 |------|-------------|
-| `config/scan_bridge.yaml` | LaserScan `/scan`（sensor-data QoS） |
-| `config/release_bridge.yaml` | RealSense camera + depth topics |
-| `config/demo_bridge.yaml` | 双向 `std_msgs/String` chatter（给 `ros{1,2}_server.sh` demo 使用） |
-| `config/demo_services_1to2.yaml` | ROS 1 service 暴露给 ROS 2（`/add_two_ints`、`/static_map`） |
-| `config/demo_services_2to1.yaml` | ROS 2 service 暴露给 ROS 1（`/get_parameters`） |
+| `config/ros1_bridge/scan_bridge.yaml` | LaserScan `/scan`（sensor-data QoS） |
+| `config/ros1_bridge/release_bridge.yaml` | RealSense camera + depth topics |
+| `config/ros1_bridge/demo_bridge.yaml` | 双向 `std_msgs/String` chatter（给 `ros{1,2}_server.sh` demo 使用） |
+| `config/ros1_bridge/demo_services_1to2.yaml` | ROS 1 service 暴露给 ROS 2（`/add_two_ints`、`/static_map`） |
+| `config/ros1_bridge/demo_services_2to1.yaml` | ROS 2 service 暴露给 ROS 1（`/get_parameters`） |
 
 > 两个 service demo 需要的 type conversion 没编进这里从源码构建的
 > `ros1_bridge`，runtime 会打印 `no conversion for type ...`，除非在 `colcon
@@ -172,7 +172,7 @@ ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 service de
 不想改 symlink 也可以直接 build 时覆盖：
 
 ```bash
-docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
+docker compose build --build-arg BRIDGE_FILE=config/ros1_bridge/release_bridge.yaml devel
 ```
 
 ### YAML 格式
@@ -210,19 +210,19 @@ services_2_to_1:
 
 | Demo | Terminal 1 (server) | Terminal 2 (client) |
 |------|---------------------|---------------------|
-| A — ROS 1 → ROS 2 | `./exec.sh /ros1_server.sh` | `./exec.sh /ros2_client.sh` |
-| B — ROS 2 → ROS 1 | `./exec.sh /ros2_server.sh` | `./exec.sh /ros1_client.sh` |
+| A — ROS 1 → ROS 2 | `./exec.sh /root/demo/ros1_server.sh` | `./exec.sh /root/demo/ros2_client.sh` |
+| B — ROS 2 → ROS 1 | `./exec.sh /root/demo/ros2_server.sh` | `./exec.sh /root/demo/ros1_client.sh` |
 
 实际操作（假设容器已用 `./run.sh -d` 起好）：
 
 ```bash
 # Terminal 1 (server) — 二选一
-./exec.sh /ros1_server.sh    # Demo A
-./exec.sh /ros2_server.sh    # Demo B
+./exec.sh /root/demo/ros1_server.sh    # Demo A
+./exec.sh /root/demo/ros2_server.sh    # Demo B
 
 # Terminal 2 (client) — 对应的另一半
-./exec.sh /ros2_client.sh    # Demo A
-./exec.sh /ros1_client.sh    # Demo B
+./exec.sh /root/demo/ros2_client.sh    # Demo A
+./exec.sh /root/demo/ros1_client.sh    # Demo B
 ```
 
 Server 脚本每一步都打印进度（`[ros1_server] step N/5: ...`），所以
@@ -230,7 +230,7 @@ Server 脚本每一步都打印进度（`[ros1_server] step N/5: ...`），所�
 `MESSAGE` 环境变量：
 
 ```bash
-./exec.sh env MESSAGE="hi from ROS 1" /ros1_server.sh
+./exec.sh env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
 ```
 
 Server terminal 按 `Ctrl+C` 会收掉 `parameter_bridge` 跟 `roscore`，

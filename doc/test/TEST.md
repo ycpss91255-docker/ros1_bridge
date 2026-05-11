@@ -1,6 +1,6 @@
 # TEST.md
 
-**49 tests** total (24 in `ros_env.bats` + 25 in `script_help.bats`).
+**50 tests** total (25 in `ros_env.bats` + 25 in `script_help.bats`).
 
 ## test/smoke/ros_env.bats
 
@@ -26,7 +26,7 @@
 | Test | Description |
 |------|-------------|
 | `bridge.yaml exists` | `/bridge.yaml` exists |
-| `bridge.yaml is non-empty (fresh-clone fallback regression #65)` | `/bridge.yaml` is non-empty; covers the Dockerfile-internal fallback to `config/demo_bridge.yaml` when no `bridge.yaml` symlink exists in build context (closes [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)) |
+| `bridge.yaml is non-empty (fresh-clone fallback regression #65)` | `/bridge.yaml` is non-empty; covers the Dockerfile-internal fallback to `config/ros1_bridge/demo_bridge.yaml` when no `bridge.yaml` symlink exists in build context (closes [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)) |
 | `entrypoint.sh exists and is executable` | `/entrypoint.sh` is executable |
 | `ros_entrypoint.sh exists and is executable` | `/ros_entrypoint.sh` is executable |
 | `ros_entrypoint.sh sources both ROS environments` | Running `/ros_entrypoint.sh` yields `ROS_DISTRO=${ROS2_DISTRO}` (ROS 1 sourced first, then ROS 2 + `/bridge_ws/install`) |
@@ -34,15 +34,16 @@
 | `entrypoint.sh skips rosparam load when roscore unreachable` | `timeout 2 rosparam list` guards the `rosparam load` so a missing roscore doesn't hang container boot |
 | `entrypoint.sh handles --help in CMD without source-propagation error` | Regression for #59: `source FILE --` prevents catkin's `_setup_util.py "$@"` from seeing CMD's `--help` and emitting argparse usage that breaks the temp-file source step |
 
-### Demo helpers (9)
+### Demo helpers (10)
 
 | Test | Description |
 |------|-------------|
-| `demo_bridge.yaml exists` | `/demo_bridge.yaml` exists (built into image from `config/demo_bridge.yaml`) |
-| `ros1_server.sh exists and is executable` | `/ros1_server.sh` is executable |
-| `ros1_client.sh exists and is executable` | `/ros1_client.sh` is executable |
-| `ros2_server.sh exists and is executable` | `/ros2_server.sh` is executable |
-| `ros2_client.sh exists and is executable` | `/ros2_client.sh` is executable |
+| `demo_bridge.yaml exists` | `/demo_bridge.yaml` exists (built into image from `config/ros1_bridge/demo_bridge.yaml`) |
+| `WORKDIR lands in /root/demo (closes #70)` | Final Dockerfile `WORKDIR` for devel + runtime is `/root/demo` so `./exec.sh` lands inside the demo folder; `pwd` regression guard |
+| `ros1_server.sh exists and is executable` | `/root/demo/ros1_server.sh` is executable |
+| `ros1_client.sh exists and is executable` | `/root/demo/ros1_client.sh` is executable |
+| `ros2_server.sh exists and is executable` | `/root/demo/ros2_server.sh` is executable |
+| `ros2_client.sh exists and is executable` | `/root/demo/ros2_client.sh` is executable |
 | `ros1_server.sh -h prints usage` | Help exits 0 with "Usage:" |
 | `ros1_client.sh -h prints usage` | Help exits 0 with "Usage:" |
 | `ros2_server.sh -h prints usage` | Help exits 0 with "Usage:" |

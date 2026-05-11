@@ -125,42 +125,53 @@ setup() {
     assert [ -f "/demo_bridge.yaml" ]
 }
 
+@test "WORKDIR lands in /root/demo (closes #70)" {
+    # Final Dockerfile WORKDIR for devel + runtime is /root/demo so that
+    # users `./exec.sh` and land directly inside the demo folder. `ls`
+    # at landing shows the 4 ros{1,2}_{server,client}.sh scripts without
+    # the user knowing where they live. The smoke test stage inherits
+    # this WORKDIR, so `pwd` here proves it.
+    run pwd
+    assert_success
+    assert_line "/root/demo"
+}
+
 @test "ros1_server.sh exists and is executable" {
-    assert [ -x "/ros1_server.sh" ]
+    assert [ -x "/root/demo/ros1_server.sh" ]
 }
 
 @test "ros1_client.sh exists and is executable" {
-    assert [ -x "/ros1_client.sh" ]
+    assert [ -x "/root/demo/ros1_client.sh" ]
 }
 
 @test "ros2_server.sh exists and is executable" {
-    assert [ -x "/ros2_server.sh" ]
+    assert [ -x "/root/demo/ros2_server.sh" ]
 }
 
 @test "ros2_client.sh exists and is executable" {
-    assert [ -x "/ros2_client.sh" ]
+    assert [ -x "/root/demo/ros2_client.sh" ]
 }
 
 @test "ros1_server.sh -h prints usage" {
-    run bash /ros1_server.sh -h
+    run bash /root/demo/ros1_server.sh -h
     assert_success
     assert_line --partial "Usage:"
 }
 
 @test "ros1_client.sh -h prints usage" {
-    run bash /ros1_client.sh -h
+    run bash /root/demo/ros1_client.sh -h
     assert_success
     assert_line --partial "Usage:"
 }
 
 @test "ros2_server.sh -h prints usage" {
-    run bash /ros2_server.sh -h
+    run bash /root/demo/ros2_server.sh -h
     assert_success
     assert_line --partial "Usage:"
 }
 
 @test "ros2_client.sh -h prints usage" {
-    run bash /ros2_client.sh -h
+    run bash /root/demo/ros2_client.sh -h
     assert_success
     assert_line --partial "Usage:"
 }
