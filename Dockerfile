@@ -24,6 +24,12 @@ ARG ROS2_DISTRO
 ENV ROS1_DISTRO=noetic
 ENV ROS2_DISTRO=${ROS2_DISTRO}
 
+# Override colcon build parallelism. Empty (default) = auto-detect from
+# min(nproc, mem_gb/2). Pass `--build-arg BUILD_JOBS=N` when the heuristic
+# mis-estimates (memory-constrained boards, large self-hosted runners
+# wanting explicit caps, etc.). See #79.
+ARG BUILD_JOBS=""
+
 # Bootstrap deps for source-building Noetic on jammy / noble. ROS 1 Noetic
 # has no apt packages outside focal, so we build ros_comm from source.
 # See issue #53 for full rationale.
@@ -102,14 +108,12 @@ RUN mkdir -p src \
     && git clone https://github.com/ros2/ros1_bridge.git
 
 # Build ros1_bridge — source / build / log trees KEPT so devel can rerun
-# colcon build after editing src/ros1_bridge.
-RUN bash -c "set -e \
-    && source /opt/ros/${ROS1_DISTRO}/setup.bash \
-    && source /opt/ros/${ROS2_DISTRO}/setup.bash \
-    && cd /bridge_ws \
-    && MAKEFLAGS='-j2' colcon build \
-        --packages-select ros1_bridge \
-        --cmake-args -DCMAKE_BUILD_TYPE=Release"
+# colcon build after editing src/ros1_bridge. MAKEFLAGS=-j is auto-detected
+# inside colcon_build_bridge.sh from min(nproc, mem_gb/2) so the build
+# scales across GHA runners, dev boxes, and Jetson hardware without OOM
+# (refs #79). Override with `--build-arg BUILD_JOBS=N`.
+COPY --chmod=0755 script/docker/colcon_build_bridge.sh /tmp/colcon_build_bridge.sh
+RUN BUILD_JOBS="${BUILD_JOBS}" /tmp/colcon_build_bridge.sh
 
 ############################## devel ##############################
 # Devel = builder + repo's scripts + bridge.yaml. Source trees still
@@ -259,6 +263,7 @@ COPY Dockerfile /lint/Dockerfile
 COPY template/script/docker/build.sh template/script/docker/run.sh template/script/docker/exec.sh template/script/docker/stop.sh /lint/
 COPY template/script/docker/_lib.sh template/script/docker/i18n.sh /lint/
 COPY script/*.sh /lint/
+COPY script/docker/*.sh /lint/
 RUN shellcheck -S warning /lint/*.sh
 RUN cd /lint && hadolint Dockerfile
 

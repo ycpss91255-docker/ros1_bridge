@@ -1,6 +1,6 @@
 # TEST.md
 
-**50 tests** total (25 in `ros_env.bats` + 25 in `script_help.bats`).
+**52 tests** total (27 in `ros_env.bats` + 25 in `script_help.bats`).
 
 ## test/smoke/ros_env.bats
 
@@ -48,6 +48,13 @@
 | `ros1_client.sh -h prints usage` | Help exits 0 with "Usage:" |
 | `ros2_server.sh -h prints usage` | Help exits 0 with "Usage:" |
 | `ros2_client.sh -h prints usage` | Help exits 0 with "Usage:" |
+
+### colcon build parallelism (2)
+
+| Test | Description |
+|------|-------------|
+| `colcon_build_bridge.sh: --print-jobs emits auto-detected -j<N> line` | `/tmp/colcon_build_bridge.sh --print-jobs` re-runs the `min(nproc, mem_gb/2)` heuristic without invoking colcon and prints `[colcon] auto-detected -j<N> (cpu=…, mem=…GB)`. Regression guard for the auto-detect path (closes [#79](https://github.com/ycpss91255-docker/ros1_bridge/issues/79)) |
+| `colcon_build_bridge.sh: BUILD_JOBS env override honored` | `BUILD_JOBS=1` env override bypasses the heuristic and emits `-j1` verbatim |
 
 ## template/test/smoke/script_help.bats (25)
 
