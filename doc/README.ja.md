@@ -27,12 +27,12 @@ ROS 1/2 ブリッジコンテナ、**Humble + Jazzy のデュアルターゲッ�
 ## TL;DR
 
 ```bash
-ln -sf config/demo_bridge.yaml bridge.yaml   # ブリッジ設定を選択（gitignored、clone 単位）。スキップしても demo にフォールバック。
+ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml   # ブリッジ設定を選択（gitignored、clone 単位）。スキップしても demo にフォールバック。
 ./build.sh && ./run.sh                       # デフォルト ROS2_DISTRO=humble（setup.conf [build] arg_4 で設定）
 ```
 
 `ln -sf` ステップをスキップしても問題ありません — Dockerfile が
-自動的に `config/demo_bridge.yaml` にフォールバックします
+自動的に `config/ros1_bridge/demo_bridge.yaml` にフォールバックします
 （[#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65) 修正）。
 利用可能な設定一覧は [ブリッジ設定](#ブリッジ設定) を参照。
 
@@ -63,8 +63,8 @@ Fast-DDS のメジャーバージョン差 + REP-2011 type-hash 不一致によ�
 
 ```bash
 # 0.（任意）ブリッジ設定を選択。スキップした場合は
-#    config/demo_bridge.yaml にフォールバック — 下記「ブリッジ設定」参照。
-ln -sf config/demo_bridge.yaml bridge.yaml
+#    config/ros1_bridge/demo_bridge.yaml にフォールバック — 下記「ブリッジ設定」参照。
+ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 # 1. ビルド
 ./build.sh
@@ -151,25 +151,25 @@ docker run --rm --network=host ros1_bridge:runtime
 
 `bridge.yaml` は **バージョン管理されません** — オペレーターが `config/`
 から選んで張る per-clone symlink です。ビルド時に symlink が存在しない
-または壊れている場合、Dockerfile は `config/demo_bridge.yaml` に自動で
+または壊れている場合、Dockerfile は `config/ros1_bridge/demo_bridge.yaml` に自動で
 フォールバックします（[#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65) 修正）。
 したがって fresh clone でもそのままビルド可能です。別の設定を選ぶには：
 
 ```bash
-ln -sf config/scan_bridge.yaml bridge.yaml          # LaserScan
-ln -sf config/release_bridge.yaml bridge.yaml       # RealSense camera + depth
-ln -sf config/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter デモ（フォールバックの既定でもある）
-ln -sf config/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 サービスデモ
-ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 サービスデモ
+ln -sf config/ros1_bridge/scan_bridge.yaml bridge.yaml          # LaserScan
+ln -sf config/ros1_bridge/release_bridge.yaml bridge.yaml       # RealSense camera + depth
+ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml          # std_msgs/String chatter デモ（フォールバックの既定でもある）
+ln -sf config/ros1_bridge/demo_services_1to2.yaml bridge.yaml   # ROS 1 → ROS 2 サービスデモ
+ln -sf config/ros1_bridge/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 サービスデモ
 ```
 
 | 設定ファイル | ブリッジ内容 |
 |--------------|--------------|
-| `config/scan_bridge.yaml` | LaserScan `/scan`（sensor-data QoS） |
-| `config/release_bridge.yaml` | RealSense camera + depth topics |
-| `config/demo_bridge.yaml` | 双方向 `std_msgs/String` chatter（`ros{1,2}_server.sh` デモ用） |
-| `config/demo_services_1to2.yaml` | ROS 1 サービスを ROS 2 に公開（`/add_two_ints`、`/static_map`） |
-| `config/demo_services_2to1.yaml` | ROS 2 サービスを ROS 1 に公開（`/get_parameters`） |
+| `config/ros1_bridge/scan_bridge.yaml` | LaserScan `/scan`（sensor-data QoS） |
+| `config/ros1_bridge/release_bridge.yaml` | RealSense camera + depth topics |
+| `config/ros1_bridge/demo_bridge.yaml` | 双方向 `std_msgs/String` chatter（`ros{1,2}_server.sh` デモ用） |
+| `config/ros1_bridge/demo_services_1to2.yaml` | ROS 1 サービスを ROS 2 に公開（`/add_two_ints`、`/static_map`） |
+| `config/ros1_bridge/demo_services_2to1.yaml` | ROS 2 サービスを ROS 1 に公開（`/get_parameters`） |
 
 > 二つのサービスデモが要求する type conversion は、ここでソースビルド
 > された `ros1_bridge` にも組み込まれていません。`colcon build`
@@ -180,7 +180,7 @@ ln -sf config/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 1 サービ�
 symlink を変更したくない場合はビルド時に上書き可能：
 
 ```bash
-docker compose build --build-arg BRIDGE_FILE=config/release_bridge.yaml devel
+docker compose build --build-arg BRIDGE_FILE=config/ros1_bridge/release_bridge.yaml devel
 ```
 
 ### YAML フォーマット
@@ -220,19 +220,19 @@ terminal は subscribe するだけです。
 
 | Demo | Terminal 1 (server) | Terminal 2 (client) |
 |------|---------------------|---------------------|
-| A — ROS 1 → ROS 2 | `./exec.sh /ros1_server.sh` | `./exec.sh /ros2_client.sh` |
-| B — ROS 2 → ROS 1 | `./exec.sh /ros2_server.sh` | `./exec.sh /ros1_client.sh` |
+| A — ROS 1 → ROS 2 | `./exec.sh /root/demo/ros1_server.sh` | `./exec.sh /root/demo/ros2_client.sh` |
+| B — ROS 2 → ROS 1 | `./exec.sh /root/demo/ros2_server.sh` | `./exec.sh /root/demo/ros1_client.sh` |
 
 実際の手順（コンテナを `./run.sh -d` で起動済みとして）：
 
 ```bash
 # Terminal 1 (server) — どちらかを選択
-./exec.sh /ros1_server.sh    # Demo A
-./exec.sh /ros2_server.sh    # Demo B
+./exec.sh /root/demo/ros1_server.sh    # Demo A
+./exec.sh /root/demo/ros2_server.sh    # Demo B
 
 # Terminal 2 (client) — 対応するもう一方
-./exec.sh /ros2_client.sh    # Demo A
-./exec.sh /ros1_client.sh    # Demo B
+./exec.sh /root/demo/ros2_client.sh    # Demo A
+./exec.sh /root/demo/ros1_client.sh    # Demo B
 ```
 
 Server スクリプトは各ステップを明示的にログ出力します
@@ -241,7 +241,7 @@ Server スクリプトは各ステップを明示的にログ出力します
 `MESSAGE` 環境変数で上書き可能です：
 
 ```bash
-./exec.sh env MESSAGE="hi from ROS 1" /ros1_server.sh
+./exec.sh env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
 ```
 
 Server terminal で `Ctrl+C` を押すと `parameter_bridge` と `roscore`

@@ -119,24 +119,34 @@ FROM builder AS devel
 
 ARG BRIDGE_FILE="bridge.yaml"
 
-COPY --chmod=0755 script/ /
-# bridge.yaml is gitignored (per-clone operator pick from config/, see
-# README "Bridge Configuration"). When the symlink is missing or broken
-# on a fresh clone, fall back to config/demo_bridge.yaml so the doc'd
-# Quick Start works without first creating the symlink. An explicit
-# `--build-arg BRIDGE_FILE=config/<picked>.yaml` still wins; an explicit
-# override that does not resolve fails loudly. Closes #65.
+# Entrypoints stay at / (ENTRYPOINT below assumes /ros_entrypoint.sh).
+COPY --chmod=0755 script/entrypoint.sh script/ros_entrypoint.sh /
+# Demo helpers land in /root/demo/ -- combined with WORKDIR /root/demo below,
+# users `./exec.sh` into the container, land directly inside this folder and
+# `ls` shows the 4 demo scripts immediately. Closes #70.
+COPY --chmod=0755 \
+    script/ros1_server.sh script/ros1_client.sh \
+    script/ros2_server.sh script/ros2_client.sh \
+    /root/demo/
+# bridge.yaml is gitignored (per-clone operator pick from config/ros1_bridge/,
+# see README "Bridge Configuration"). When the symlink is missing or broken
+# on a fresh clone, fall back to config/ros1_bridge/demo_bridge.yaml so the
+# doc'd Quick Start works without first creating the symlink. An explicit
+# `--build-arg BRIDGE_FILE=config/ros1_bridge/<picked>.yaml` still wins; an
+# explicit override that does not resolve fails loudly. Closes #65 / #70.
 RUN --mount=type=bind,source=.,target=/ctx \
     if [ -f "/ctx/${BRIDGE_FILE}" ]; then \
         install -m 0644 "/ctx/${BRIDGE_FILE}" /bridge.yaml; \
     elif [ "${BRIDGE_FILE}" = "bridge.yaml" ]; then \
-        echo "[Dockerfile] bridge.yaml symlink missing or broken; falling back to config/demo_bridge.yaml" >&2; \
-        install -m 0644 /ctx/config/demo_bridge.yaml /bridge.yaml; \
+        echo "[Dockerfile] bridge.yaml symlink missing or broken; falling back to config/ros1_bridge/demo_bridge.yaml" >&2; \
+        install -m 0644 /ctx/config/ros1_bridge/demo_bridge.yaml /bridge.yaml; \
     else \
         echo "[Dockerfile] BRIDGE_FILE='${BRIDGE_FILE}' is not a readable file in the build context" >&2; \
         exit 1; \
     fi
-COPY --chmod=0644 config/demo_bridge.yaml /demo_bridge.yaml
+COPY --chmod=0644 config/ros1_bridge/demo_bridge.yaml /demo_bridge.yaml
+
+WORKDIR /root/demo
 
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
@@ -207,19 +217,26 @@ COPY --from=builder /bridge_ws/install /bridge_ws/install
 
 ARG BRIDGE_FILE="bridge.yaml"
 
-COPY --chmod=0755 script/ /
-# Same bridge.yaml fallback rule as the devel stage above. Closes #65.
+# Same script COPY split as the devel stage. Closes #70.
+COPY --chmod=0755 script/entrypoint.sh script/ros_entrypoint.sh /
+COPY --chmod=0755 \
+    script/ros1_server.sh script/ros1_client.sh \
+    script/ros2_server.sh script/ros2_client.sh \
+    /root/demo/
+# Same bridge.yaml fallback rule as the devel stage above. Closes #65 / #70.
 RUN --mount=type=bind,source=.,target=/ctx \
     if [ -f "/ctx/${BRIDGE_FILE}" ]; then \
         install -m 0644 "/ctx/${BRIDGE_FILE}" /bridge.yaml; \
     elif [ "${BRIDGE_FILE}" = "bridge.yaml" ]; then \
-        echo "[Dockerfile] bridge.yaml symlink missing or broken; falling back to config/demo_bridge.yaml" >&2; \
-        install -m 0644 /ctx/config/demo_bridge.yaml /bridge.yaml; \
+        echo "[Dockerfile] bridge.yaml symlink missing or broken; falling back to config/ros1_bridge/demo_bridge.yaml" >&2; \
+        install -m 0644 /ctx/config/ros1_bridge/demo_bridge.yaml /bridge.yaml; \
     else \
         echo "[Dockerfile] BRIDGE_FILE='${BRIDGE_FILE}' is not a readable file in the build context" >&2; \
         exit 1; \
     fi
-COPY --chmod=0644 config/demo_bridge.yaml /demo_bridge.yaml
+COPY --chmod=0644 config/ros1_bridge/demo_bridge.yaml /demo_bridge.yaml
+
+WORKDIR /root/demo
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["ros2", "run", "ros1_bridge", "parameter_bridge"]
