@@ -256,8 +256,8 @@ COPY --from=test-tools-stage /usr/local/bin/hadolint /usr/local/bin/hadolint
 # Lint: ShellCheck (.sh) + Hadolint (Dockerfile)
 COPY .hadolint.yaml /lint/.hadolint.yaml
 COPY Dockerfile /lint/Dockerfile
-COPY template/script/docker/build.sh template/script/docker/run.sh template/script/docker/exec.sh template/script/docker/stop.sh /lint/
-COPY template/script/docker/_lib.sh template/script/docker/i18n.sh /lint/
+COPY .base/script/docker/build.sh template/script/docker/run.sh template/script/docker/exec.sh template/script/docker/stop.sh /lint/
+COPY .base/script/docker/_lib.sh template/script/docker/i18n.sh /lint/
 COPY script/*.sh /lint/
 RUN shellcheck -S warning /lint/*.sh
 RUN cd /lint && hadolint Dockerfile
@@ -271,7 +271,7 @@ RUN ln -sf /opt/bats/bin/bats /usr/local/bin/bats
 ENV BATS_LIB_PATH="/usr/lib/bats"
 
 # Smoke test
-COPY template/test/smoke/test_helper.bash template/test/smoke/script_help.bats /smoke_test/
+COPY .base/test/smoke/test_helper.bash template/test/smoke/script_help.bats /smoke_test/
 COPY test/smoke/ /smoke_test/
 
 RUN bats /smoke_test/

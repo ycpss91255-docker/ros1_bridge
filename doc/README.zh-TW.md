@@ -269,12 +269,12 @@ ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定義
 ├── Dockerfile                   # 多階段建置（devel + runtime + test）；source-builds Noetic + ros1_bridge
 ├── setup.conf                   # Repo override；[build] arg_4=ROS2_DISTRO 選 humble|jazzy
-├── build.sh -> template/script/docker/build.sh    # Symlink
-├── run.sh -> template/script/docker/run.sh        # Symlink
-├── exec.sh -> template/script/docker/exec.sh      # Symlink
-├── stop.sh -> template/script/docker/stop.sh      # Symlink
-├── Makefile -> template/script/docker/Makefile    # Symlink
-├── template/                    # 共用腳本、測試、CI（git subtree；版本紀錄在 template/.version）
+├── build.sh -> .base/script/docker/build.sh    # Symlink
+├── run.sh -> .base/script/docker/run.sh        # Symlink
+├── exec.sh -> .base/script/docker/exec.sh      # Symlink
+├── stop.sh -> .base/script/docker/stop.sh      # Symlink
+├── Makefile -> .base/script/docker/Makefile    # Symlink
+├── .base/                    # 共用腳本、測試、CI（git subtree；版本紀錄在 .base/.version）
 ├── script/
 │   ├── entrypoint.sh            # Source ROS 1 + ROS 2，載入 bridge 設定
 │   ├── ros_entrypoint.sh        # 僅 source ROS 環境（相容 osrf）
