@@ -7,11 +7,7 @@
 # Jetson Orin 8 GB). Heuristic: min(nproc, mem_gb / 2). Override
 # via BUILD_JOBS env var when the user knows their constraints.
 # Refs ycpss91255-docker/ros1_bridge#79.
-#
-# `set -u` deliberately omitted: ROS setup.bash profile.d entries (roslaunch.sh
-# in particular) reference unbound vars (ROS_MASTER_URI), and the original
-# Dockerfile RUN this script replaces also used only `set -e` for that reason.
-set -eo pipefail
+set -euo pipefail
 
 main() {
   local cpu mem_gb mem_cap jobs
@@ -36,10 +32,15 @@ main() {
     return 0
   fi
 
+  # ROS setup.bash profile.d entries (roslaunch.sh) reference unbound vars
+  # like ROS_MASTER_URI; disable -u just around the source calls so the
+  # rest of the script keeps its strict-mode guarantees.
+  set +u
   # shellcheck disable=SC1090
   source "/opt/ros/${ROS1_DISTRO}/setup.bash"
   # shellcheck disable=SC1090
   source "/opt/ros/${ROS2_DISTRO}/setup.bash"
+  set -u
 
   cd /bridge_ws
   MAKEFLAGS="-j${jobs}" colcon build \
