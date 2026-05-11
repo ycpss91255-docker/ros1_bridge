@@ -294,13 +294,14 @@ ros1_bridge/
 │   ├── ros1_client.sh           # Demo B subscriber
 │   ├── ros2_server.sh           # Demo B publisher（roscore + bridge を自起動）
 │   └── ros2_client.sh           # Demo A subscriber
-├── bridge.yaml                  # config/*.yaml への symlink（gitignored、利用者が選択）
-├── config/                      # Bridge 設定ファイル
-│   ├── scan_bridge.yaml         # LaserScan bridge
-│   ├── release_bridge.yaml      # Camera + depth bridge
-│   ├── demo_bridge.yaml         # 双方向 std_msgs/String chatter
-│   ├── demo_services_1to2.yaml  # ROS 1 → ROS 2 サービスデモ
-│   └── demo_services_2to1.yaml  # ROS 2 → ROS 1 サービスデモ
+├── bridge.yaml                  # config/ros1_bridge/*.yaml への symlink（gitignored、利用者が選択）
+├── config/
+│   └── ros1_bridge/             # Bridge 設定ファイル（namespaced；config/ は template overlay 用に温存）
+│       ├── scan_bridge.yaml         # LaserScan bridge
+│       ├── release_bridge.yaml      # Camera + depth bridge
+│       ├── demo_bridge.yaml         # 双方向 std_msgs/String chatter（フォールバックの既定でもある）
+│       ├── demo_services_1to2.yaml  # ROS 1 → ROS 2 サービスデモ
+│       └── demo_services_2to1.yaml  # ROS 2 → ROS 1 サービスデモ
 ├── doc/                         # 翻訳版 README
 │   ├── README.zh-TW.md          # 繁体字中国語
 │   ├── README.zh-CN.md          # 簡体字中国語

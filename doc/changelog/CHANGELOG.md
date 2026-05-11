@@ -19,6 +19,7 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dropped the bogus `[English](CHANGELOG.md) | [繁體中文](CHANGELOG.zh-TW.md) | ...` 4-language link from `doc/changelog/CHANGELOG.md` line 1. The translated CHANGELOG files have never existed; the link has been a dead pointer since repo init. CHANGELOG remains a single English file by design (release-note clarity), unlike README which is genuinely 4-language.
 
 ### Fixed
+- Synced the inline `## Directory Structure` tree in all 4 READMEs (`README.md` + `doc/README.{zh-TW,zh-CN,ja}.md`) to the post-#75 layout. The trees still showed the pre-#75 flat `config/{scan_bridge,release_bridge,demo_bridge,demo_services_1to2,demo_services_2to1}.yaml` layout even though the rest of each README (TL;DR, Quick Start, Bridge Configuration table, `--build-arg` example) had been updated to the namespaced `config/ros1_bridge/<name>.yaml`. Now the tree shows `config/` containing a single `ros1_bridge/` subdir holding the five yaml files, and the `bridge.yaml` symlink comment references `config/ros1_bridge/*.yaml`. Doc-only — no code, Dockerfile, workflow, or test changes.
 - Removed the duplicate `[![CI]](...)` badge line from `README.md` (left over from #69, which added the combined CI + License badge line above without removing the prior single-CI line). Now exactly one badge row.
 
 ### Added

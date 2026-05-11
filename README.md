@@ -290,13 +290,14 @@ ros1_bridge/
 │   ├── ros1_client.sh           # Demo B subscriber
 │   ├── ros2_server.sh           # Demo B publisher (bootstraps roscore + bridge)
 │   └── ros2_client.sh           # Demo A subscriber
-├── bridge.yaml                  # Symlink to one of config/*.yaml (gitignored, operator picks)
-├── config/                      # Bridge configs
-│   ├── scan_bridge.yaml         # LaserScan bridge
-│   ├── release_bridge.yaml     # Camera + depth bridge
-│   ├── demo_bridge.yaml         # Bidirectional std_msgs/String chatter
-│   ├── demo_services_1to2.yaml  # ROS 1 → ROS 2 service demo
-│   └── demo_services_2to1.yaml  # ROS 2 → ROS 1 service demo
+├── bridge.yaml                  # Symlink to one of config/ros1_bridge/*.yaml (gitignored, operator picks)
+├── config/
+│   └── ros1_bridge/             # Bridge configs (namespaced; frees config/ for template overlays)
+│       ├── scan_bridge.yaml         # LaserScan bridge
+│       ├── release_bridge.yaml      # Camera + depth bridge
+│       ├── demo_bridge.yaml         # Bidirectional std_msgs/String chatter (also the fallback)
+│       ├── demo_services_1to2.yaml  # ROS 1 → ROS 2 service demo
+│       └── demo_services_2to1.yaml  # ROS 2 → ROS 1 service demo
 ├── doc/                         # Translated READMEs
 │   ├── README.zh-TW.md          # Traditional Chinese
 │   ├── README.zh-CN.md          # Simplified Chinese
