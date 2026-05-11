@@ -5,7 +5,7 @@
 # Subscribes to /chatter_2to1 from ROS 1. Run ros2_server.sh on the other
 # terminal first — it owns roscore + parameter_bridge.
 
-set -e
+set -euo pipefail
 
 readonly TOPIC="/chatter_2to1"
 
@@ -30,9 +30,15 @@ main() {
     esac
 
     log "step 1/2: sourcing ROS 1 (${ROS1_DISTRO})"
+    # `set +u` / `set -u` brackets isolate ROS's setup.bash chain
+    # (catkin + ament profile.d dereference unbound vars) from our
+    # strict-mode -- canonical pattern for sourcing third-party
+    # setup scripts (refs #81).
+    set +u
     unset ROS_DISTRO
     # shellcheck source=/dev/null
     source "/opt/ros/${ROS1_DISTRO}/setup.bash"
+    set -u
 
     log "step 2/2: subscribing to ${TOPIC} (Ctrl+C to stop)"
     rostopic echo "${TOPIC}"

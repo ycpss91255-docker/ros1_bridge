@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # Source ROS 1 + ROS 2 + ros1_bridge install overlay. The trailing `--`
 # is required: bash's `source` propagates the calling script's positional
@@ -11,6 +11,13 @@ set -e
 # `setup.sh.<random>: line 1: usage:: command not found`. Passing `--`
 # resets the sourced script's positional args to a single `--` token
 # which `_setup_util.py` treats as end-of-options.
+#
+# `set +u` / `set -u` brackets isolate ROS's setup.bash chain (catkin
+# + ament profile.d entries dereference unbound vars like
+# ROS_MASTER_URI / AMENT_TRACE_SETUP_FILES) from our strict-mode
+# guarantees -- canonical pattern for sourcing third-party setup
+# scripts (compare venv / conda / nvm). Closes #81.
+set +u
 # shellcheck source=/dev/null
 source "/opt/ros/${ROS1_DISTRO}/setup.bash" --
 # shellcheck source=/dev/null
@@ -20,6 +27,7 @@ if [[ -f /bridge_ws/install/setup.bash ]]; then
     # shellcheck source=/dev/null
     source /bridge_ws/install/setup.bash --
 fi
+set -u
 
 _bridge_file="/bridge.yaml"
 if [ -s "${_bridge_file}" ]; then

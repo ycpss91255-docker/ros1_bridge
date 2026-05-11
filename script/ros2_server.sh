@@ -10,7 +10,7 @@
 # collide — sourcing both into one shell breaks roscore (Python imports
 # ROS 2's rosgraph_msgs.Log instead of ROS 1's).
 
-set -e
+set -euo pipefail
 
 readonly TOPIC="/chatter_2to1"
 readonly BRIDGE_YAML="/demo_bridge.yaml"
@@ -36,18 +36,25 @@ log() {
     printf '[ros2_server] %s\n' "$*"
 }
 
-# Source ROS 1 only (for roscore, rostopic, rosparam).
+# Source ROS 1 only (for roscore, rostopic, rosparam). `set +u` / `set -u`
+# brackets isolate ROS's setup.bash chain (catkin + ament profile.d
+# dereference unbound vars) from our strict-mode -- canonical pattern
+# for sourcing third-party setup scripts (refs #81).
 ros1_env() {
+    set +u
     unset ROS_DISTRO
     # shellcheck source=/dev/null
     source "/opt/ros/${ROS1_DISTRO}/setup.bash" >/dev/null 2>&1
+    set -u
 }
 
 # Source ROS 2 only (for ros2 CLI).
 ros2_env() {
+    set +u
     unset ROS_DISTRO
     # shellcheck source=/dev/null
     source "/opt/ros/${ROS2_DISTRO}/setup.bash" >/dev/null 2>&1
+    set -u
 }
 
 # Source ROS 1 then ROS 2 (for parameter_bridge — needs both).
@@ -57,8 +64,10 @@ both_env() {
     ros1_env
     ros2_env
     if [[ -f /bridge_ws/install/setup.bash ]]; then
+        set +u
         # shellcheck source=/dev/null
         source /bridge_ws/install/setup.bash >/dev/null 2>&1
+        set -u
     fi
 }
 

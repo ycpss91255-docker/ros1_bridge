@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
-# ROS setup.bash + catkin profile scripts reference unset vars, so -u is omitted.
-set -e
+set -euo pipefail
 
-# unset ROS_DISTRO to silence override warning before sourcing ROS 1
+# `set +u` / `set -u` brackets isolate ROS's setup.bash chain (catkin
+# + ament profile.d entries dereference unbound vars like
+# ROS_MASTER_URI / AMENT_TRACE_SETUP_FILES) from our strict-mode
+# guarantees -- canonical pattern for sourcing third-party setup
+# scripts (compare venv / conda / nvm). Closes #81.
+#
+# `unset ROS_DISTRO` inside the bracket silences catkin's distro-mix
+# warning when re-sourcing for ROS 2 after ROS 1; safe because the
+# unset only runs while -u is off.
+set +u
 unset ROS_DISTRO
 # shellcheck source=/dev/null
 source "/opt/ros/${ROS1_DISTRO}/setup.bash" --
 
-# unset ROS_DISTRO to silence override warning before sourcing ROS 2
 unset ROS_DISTRO
 # shellcheck source=/dev/null
 source "/opt/ros/${ROS2_DISTRO}/setup.bash" --
@@ -19,5 +26,6 @@ if [[ -f /bridge_ws/install/setup.bash ]]; then
     # shellcheck source=/dev/null
     source /bridge_ws/install/setup.bash --
 fi
+set -u
 
 exec "${@}"

@@ -32,9 +32,11 @@ main() {
     return 0
   fi
 
-  # ROS setup.bash profile.d entries (roslaunch.sh) reference unbound vars
-  # like ROS_MASTER_URI; disable -u just around the source calls so the
-  # rest of the script keeps its strict-mode guarantees.
+  # `set +u` / `set -u` brackets isolate ROS's setup.bash chain
+  # (catkin + ament profile.d dereference unbound vars like
+  # ROS_MASTER_URI / AMENT_TRACE_SETUP_FILES) from our strict-mode --
+  # canonical pattern for sourcing third-party setup scripts (compare
+  # venv / conda / nvm). Refs #81.
   set +u
   # shellcheck disable=SC1090
   source "/opt/ros/${ROS1_DISTRO}/setup.bash"
