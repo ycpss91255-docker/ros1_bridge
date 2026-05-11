@@ -175,3 +175,21 @@ setup() {
     assert_success
     assert_line --partial "Usage:"
 }
+
+# -------------------- colcon build parallelism (closes #79) --------------------
+
+@test "colcon_build_bridge.sh: --print-jobs emits auto-detected -j<N> line" {
+    # The script ran during builder stage with auto-detected -j; --print-jobs
+    # re-runs the heuristic without invoking colcon so we can assert the
+    # observable output format without re-building.
+    run /tmp/colcon_build_bridge.sh --print-jobs
+    assert_success
+    assert_output --partial "[colcon] auto-detected -j"
+}
+
+@test "colcon_build_bridge.sh: BUILD_JOBS env override honored" {
+    # Explicit override should bypass the heuristic and emit the exact value.
+    run env BUILD_JOBS=1 /tmp/colcon_build_bridge.sh --print-jobs
+    assert_success
+    assert_output --partial "[colcon] auto-detected -j1"
+}
