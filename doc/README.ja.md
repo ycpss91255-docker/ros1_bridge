@@ -80,22 +80,21 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 デフォルトは `humble`（jammy 22.04）。`jazzy`（noble 24.04）に切り替えるには：
 
-**方式 1（推奨）：`setup.conf` を編集**。`[build]` セクションの `arg_4` を変更：
-
-```ini
-[build]
-arg_4 = ROS2_DISTRO=jazzy
-```
-
-その後 rebuild。`setup.sh` は `setup.conf` を hash して `.env` の `SETUP_CONF_HASH`
-に書き込むため、`./build.sh` / `./run.sh` は変更を自動検出して `.env` + `compose.yaml`
-を再生成します。image tag（`yunchien/ros1_bridge:devel` 等）は distro を跨いで
-変わらず、切り替えはその場で rebuild されます。
+**方式 1（推奨）：`setup.sh set` CLI を使用**
 
 ```bash
-./build.sh           # setup.conf から新しい ROS2_DISTRO を取得
-./run.sh
+./setup.sh set build.arg_4 ROS2_DISTRO=jazzy
+./build.sh && ./run.sh
 ```
+
+`set` は値を `setup.conf [build] arg_4` に書き込みます（section / key が
+無ければ作成）。`./build.sh` は `.env` 内の `setup.conf` hash で変更を
+検知し、`.env` + `compose.yaml` を自動再生成して rebuild します。image
+tag（`yunchien/ros1_bridge:devel` 等）は distro を跨いで変わらず、
+切り替えはその場で rebuild されます。
+
+対話的に編集する場合は `./setup_tui.sh`（dialog / whiptail フロントエンド）
+を実行し、TUI で `[build] arg_4` を変更します。
 
 **方式 2：単発の `--build-arg`（直接 docker build）**。`./build.sh` を経由せず、
 `.env` / `compose.yaml` も更新しません：

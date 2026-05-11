@@ -78,22 +78,21 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 Default is `humble` (jammy 22.04). To switch to `jazzy` (noble 24.04):
 
-**Option 1 (recommended): edit `setup.conf`.** Change the `[build]` section's `arg_4`:
-
-```ini
-[build]
-arg_4 = ROS2_DISTRO=jazzy
-```
-
-Then rebuild. `setup.sh` hashes `setup.conf` into `.env`'s `SETUP_CONF_HASH`,
-so `./build.sh` / `./run.sh` automatically detect the change and regenerate
-`.env` + `compose.yaml`. The image tag (`yunchien/ros1_bridge:devel` etc.)
-is unchanged across distros — switching rebuilds in place.
+**Option 1 (recommended): use the `setup.sh set` CLI.**
 
 ```bash
-./build.sh           # picks up the new ROS2_DISTRO from setup.conf
-./run.sh
+./setup.sh set build.arg_4 ROS2_DISTRO=jazzy
+./build.sh && ./run.sh
 ```
+
+`set` writes the value into `setup.conf [build] arg_4` (creating the
+section / key if absent). `./build.sh` then detects the drift via the
+`setup.conf` hash baked into `.env`, regenerates `.env` + `compose.yaml`,
+and rebuilds. The image tag (`yunchien/ros1_bridge:devel` etc.) is
+unchanged across distros — switching rebuilds in place.
+
+For an interactive picker, run `./setup_tui.sh` (dialog / whiptail
+frontend) and change `[build] arg_4` there.
 
 **Option 2: pass `--build-arg` for one-off direct `docker build`.** Bypasses
 `./build.sh`, won't update `.env` / `compose.yaml`:
