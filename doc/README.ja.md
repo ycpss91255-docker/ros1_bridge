@@ -280,12 +280,12 @@ ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定義
 ├── Dockerfile                   # マルチステージビルド（devel + runtime + test）；source-builds Noetic + ros1_bridge
 ├── setup.conf                   # Repo override；[build] arg_4=ROS2_DISTRO で humble|jazzy を選択
-├── build.sh -> template/script/docker/build.sh    # Symlink
-├── run.sh -> template/script/docker/run.sh        # Symlink
-├── exec.sh -> template/script/docker/exec.sh      # Symlink
-├── stop.sh -> template/script/docker/stop.sh      # Symlink
-├── Makefile -> template/script/docker/Makefile    # Symlink
-├── template/                    # 共有スクリプト、テスト、CI（git subtree；バージョンは template/.version）
+├── build.sh -> .base/script/docker/build.sh    # Symlink
+├── run.sh -> .base/script/docker/run.sh        # Symlink
+├── exec.sh -> .base/script/docker/exec.sh      # Symlink
+├── stop.sh -> .base/script/docker/stop.sh      # Symlink
+├── Makefile -> .base/script/docker/Makefile    # Symlink
+├── .base/                    # 共有スクリプト、テスト、CI（git subtree；バージョンは .base/.version）
 ├── script/
 │   ├── entrypoint.sh            # ROS 1 + ROS 2 を source、bridge 設定を読み込み
 │   ├── ros_entrypoint.sh        # ROS 環境のみ source（osrf 互換）
