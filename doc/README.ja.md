@@ -96,8 +96,9 @@ tag（`yunchien/ros1_bridge:devel` 等）は distro を跨いで変わらず、
 対話的に編集する場合は `./setup_tui.sh`（dialog / whiptail フロントエンド）
 を実行し、TUI で `[build] arg_4` を変更します。
 
-**方式 2：単発の `--build-arg`（直接 docker build）**。`./build.sh` を経由せず、
-`.env` / `compose.yaml` も更新しません：
+**方式 2：単発の `--build-arg` override（直接 docker build）**。`./build.sh` を
+経由せず、`.env` / `compose.yaml` も更新しません。wrapper 側の `./build.sh
+--build-arg ROS2_DISTRO=jazzy` は [base#279](https://github.com/ycpss91255-docker/base/issues/279) 完了待ちです：
 
 ```bash
 docker build --target devel --build-arg ROS2_DISTRO=jazzy -t ros1_bridge:devel .
@@ -114,8 +115,7 @@ setup.conf の変更はローカル build のみに影響し、`ghcr.io/ycpss912
 ```bash
 ./build.sh                       # devel をビルド（デフォルト）
 ./build.sh test                  # smoke test 付きビルド
-
-docker compose build devel       # 同等のコマンド
+./build.sh runtime               # 軽量な runtime image をビルド
 ```
 
 ### 実行
@@ -127,16 +127,14 @@ stage target に応じて 2 モード：
 ./run.sh -d                      # devel をバックグラウンド起動、./exec.sh で接続
 ```
 
-`runtime`（bridge 自動起動）は現状 `docker run` を直接呼ぶ必要があります
-—— 自動生成される `compose.yaml` はまだ `runtime` サービスを emit しません
-（template 側で追跡中）：
+`runtime`（Dockerfile `CMD` 経由で bridge 自動起動）：
 
 ```bash
-docker build --target runtime -t ros1_bridge:runtime .
-docker run --rm --network=host ros1_bridge:runtime
-# entrypoint が両 ROS を source、rosparam load /bridge.yaml、
-# その後 `ros2 run ros1_bridge parameter_bridge` を exec します。
-# 前提：host network 上に roscore が起動していること。
+./run.sh -t runtime              # runtime service を起動。entrypoint が両 ROS を
+                                 # source、rosparam load /bridge.yaml、その後
+                                 # `ros2 run ros1_bridge parameter_bridge` を exec
+                                 # します。前提：host network 上に roscore が
+                                 # 起動していること。
 ```
 
 ### 起動中のコンテナに接続
@@ -176,7 +174,9 @@ ln -sf config/ros1_bridge/demo_services_2to1.yaml bridge.yaml   # ROS 2 → ROS 
 > 再ビルドしない限り、runtime で `no conversion for type ...` が
 > 表示されます。
 
-symlink を変更したくない場合はビルド時に上書き可能：
+symlink を変更したくない場合はビルド時に上書き可能。wrapper 側の
+`./build.sh --build-arg BRIDGE_FILE=...` は [base#279](https://github.com/ycpss91255-docker/base/issues/279)
+完了待ちです；それまでは直接 `docker compose build` を使います：
 
 ```bash
 docker compose build --build-arg BRIDGE_FILE=config/ros1_bridge/release_bridge.yaml devel
