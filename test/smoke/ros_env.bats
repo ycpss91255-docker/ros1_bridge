@@ -246,6 +246,31 @@ setup() {
     assert_success
 }
 
+@test "ros1_client.sh waits for roscore before subscribing" {
+    # Regression guard: opening ros1_client.sh before its paired server
+    # used to ROSMasterException-and-exit immediately because rostopic
+    # echo demands a reachable master. The fix is an `until rostopic
+    # list >/dev/null 2>&1; do sleep; done` poll loop. Without this
+    # guard a future refactor could silently revert the demo UX to
+    # "client crashes if you open it first".
+    run grep -F 'until rostopic list >/dev/null 2>&1' /root/demo/ros1_client.sh
+    assert_success
+    run grep -F 'waiting for roscore' /root/demo/ros1_client.sh
+    assert_success
+}
+
+@test "ros2_client.sh waits for the bridged topic before subscribing" {
+    # Same UX-symmetry guard for the ROS 2 side. ROS 2 has no central
+    # master, so the failure mode is "ros2 topic echo sits silently
+    # with zero output" -- indistinguishable hang from "subscribed,
+    # but no publisher". Fix is to poll `ros2 topic list` until the
+    # bridged topic actually appears, then subscribe.
+    run grep -F 'until ros2 topic list 2>/dev/null | grep -qx "${TOPIC}"' /root/demo/ros2_client.sh
+    assert_success
+    run grep -F 'waiting for ${TOPIC}' /root/demo/ros2_client.sh
+    assert_success
+}
+
 # -------------------- colcon build parallelism (closes #79) --------------------
 
 @test "colcon_build_bridge.sh: --print-jobs emits auto-detected -j<N> line" {

@@ -5,6 +5,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Demo clients now wait for their paired server before subscribing** so opening the client terminal first doesn't crash (ros1_client.sh) or stall silently (ros2_client.sh). `ros1_client.sh` polls `rostopic list >/dev/null 2>&1` until roscore is reachable; `ros2_client.sh` polls `ros2 topic list | grep -qx "${TOPIC}"` until the bridge has republished the topic. Both wait indefinitely (Ctrl+C to bail) and print a heartbeat log every ~5 seconds so the wait doesn't look like a hang. Previously, running `./exec.sh /root/demo/ros1_client.sh` before its paired `ros2_server.sh` crashed immediately with `ROSMasterException`; running `./exec.sh /root/demo/ros2_client.sh` first showed zero output indistinguishable from "subscribed but no publisher". Two new smoke regression tests guard the poll patterns; total bats `60 -> 62`.
+
 ### Changed
 - **Demo server `--rate` flag gains a `-r` short alias** so the bash arg parser convention matches the rest of the wrapper family (`run.sh -t/--target`, `exec.sh -t/--target`, etc.). `./exec.sh /root/demo/ros1_server.sh -r 5` is now equivalent to `--rate 5`. Existing smoke tests updated to assert the `-r|--rate)` case-arm exists in both server scripts; bats count unchanged at 60. Pure UX polish over #95.
 
