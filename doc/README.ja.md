@@ -105,8 +105,8 @@ setup.conf の変更はローカル build のみに影響し、`ghcr.io/ycpss912
 
 ```bash
 ./build.sh                       # devel をビルド（デフォルト）
-./build.sh test                  # smoke test 付きビルド
-./build.sh runtime               # 軽量な runtime image をビルド
+./build.sh -t test               # smoke test 付きビルド
+./build.sh -t runtime            # 軽量な runtime image をビルド
 ```
 
 ### 実行
