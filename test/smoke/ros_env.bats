@@ -199,6 +199,38 @@ setup() {
     assert_success
 }
 
+@test "ros1_server.sh logs 'publishing #N' BEFORE rostopic pub --once" {
+    # Regression guard: `log "publishing #..."` must appear in source order
+    # BEFORE the `exec rostopic pub --once` call. rostopic pub --once takes
+    # ~700ms to spin up rospy and emit; logging after the subshell exits
+    # makes the server's #N appear chronologically AFTER the client's #N,
+    # which reads as desync. The fix is purely cosmetic but matters for
+    # readability of paired terminal output.
+    #
+    # Match `exec rostopic pub --once` (not bare `rostopic pub --once`) to
+    # skip the explanatory `log "...spawns rostopic pub --once..."` line
+    # earlier in the same step which also contains the substring.
+    local log_line pub_line
+    log_line=$(awk '/log "        publishing #/{print NR; exit}' /root/demo/ros1_server.sh)
+    pub_line=$(awk '/exec rostopic pub --once/{print NR; exit}' /root/demo/ros1_server.sh)
+    [[ -n "${log_line}" ]] || fail "no 'publishing #' log line found"
+    [[ -n "${pub_line}" ]] || fail "no 'exec rostopic pub --once' found"
+    [ "${log_line}" -lt "${pub_line}" ] \
+        || fail "log line ${log_line} must precede publish line ${pub_line}"
+}
+
+@test "ros2_server.sh logs 'publishing #N' BEFORE ros2 topic pub --once" {
+    # Same ordering guard for the ROS 2 side. Matches `exec ros2 topic pub
+    # --once` to skip the explanatory log line containing the same substring.
+    local log_line pub_line
+    log_line=$(awk '/log "        publishing #/{print NR; exit}' /root/demo/ros2_server.sh)
+    pub_line=$(awk '/exec ros2 topic pub --once/{print NR; exit}' /root/demo/ros2_server.sh)
+    [[ -n "${log_line}" ]] || fail "no 'publishing #' log line found"
+    [[ -n "${pub_line}" ]] || fail "no 'exec ros2 topic pub --once' found"
+    [ "${log_line}" -lt "${pub_line}" ] \
+        || fail "log line ${log_line} must precede publish line ${pub_line}"
+}
+
 # -------------------- colcon build parallelism (closes #79) --------------------
 
 @test "colcon_build_bridge.sh: --print-jobs emits auto-detected -j<N> line" {
