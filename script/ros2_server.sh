@@ -117,12 +117,18 @@ main() {
     log "step 4/4: publishing on ${TOPIC} with sequence counter — ROS 2 (${ROS2_DISTRO}) env"
     log "        Each iteration spawns ros2 topic pub --once, so effective rate"
     log "        is ~0.5-0.7 Hz (rclpy init dominates). Ctrl+C to stop everything."
+    # Log BEFORE the publish call, not after: ros2 topic pub --once takes
+    # ~700ms to spin up rclpy, register the publisher, and emit -- during
+    # which the bridge has already relayed the message and the ROS 1
+    # client has printed it. Logging after the subshell exits would make
+    # the server's "#N" appear chronologically AFTER the client's #N,
+    # which reads as desync even though everything is fine on the wire.
     local seq=0
     while true; do
         seq=$((seq + 1))
+        log "        publishing #${seq}..."
         ( ros2_env; exec ros2 topic pub --once "${TOPIC}" std_msgs/msg/String \
             "{data: '${message} #${seq}'}" ) >/dev/null 2>&1
-        log "        published #${seq}"
         sleep 1
     done
 }

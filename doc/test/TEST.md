@@ -1,6 +1,6 @@
 # TEST.md
 
-**54 tests** total (29 in `ros_env.bats` + 25 in `script_help.bats`).
+**56 tests** total (31 in `ros_env.bats` + 25 in `script_help.bats`).
 
 ## test/smoke/ros_env.bats
 
@@ -34,7 +34,7 @@
 | `entrypoint.sh skips rosparam load when roscore unreachable` | `timeout 2 rosparam list` guards the `rosparam load` so a missing roscore doesn't hang container boot |
 | `entrypoint.sh handles --help in CMD without source-propagation error` | Regression for #59: `source FILE --` prevents catkin's `_setup_util.py "$@"` from seeing CMD's `--help` and emitting argparse usage that breaks the temp-file source step |
 
-### Demo helpers (12)
+### Demo helpers (14)
 
 | Test | Description |
 |------|-------------|
@@ -50,6 +50,8 @@
 | `ros2_client.sh -h prints usage` | Help exits 0 with "Usage:" |
 | `ros1_server.sh step 4/4 publishes with sequence counter (--once loop)` | Regression guard: step 4/4 must use `rostopic pub --once` inside a `while` loop with incrementing `seq`, so each published message ends with `#${seq}` and Demo A client output is distinguishable per iteration |
 | `ros2_server.sh step 4/4 publishes with sequence counter (--once loop)` | Same guard for the ROS 2 side: step 4/4 must use `ros2 topic pub --once` inside a `while` loop with incrementing `seq` for Demo B |
+| `ros1_server.sh logs 'publishing #N' BEFORE rostopic pub --once` | Ordering guard: the `log "publishing #..."` line must precede the `rostopic pub --once` call in source order, so server output reaches the terminal BEFORE the client receives the message (rostopic pub --once takes ~700ms; logging after would make server #N appear after client #N) |
+| `ros2_server.sh logs 'publishing #N' BEFORE ros2 topic pub --once` | Same ordering guard for the ROS 2 side (Demo B publisher) |
 
 ### colcon build parallelism (2)
 

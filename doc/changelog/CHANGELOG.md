@@ -5,6 +5,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Demo server log line now prints BEFORE the publish call**, not after, so server-side `publishing #N` appears in the terminal before the paired ROS 2 / ROS 1 client receives and prints the message. The previous order was `seq++` -> publish (`rostopic pub --once`, ~700ms blocking) -> `log "published #N"` -> sleep. Since `rostopic pub --once` itself takes the full ~700ms to spin up rospy / rclpy, register a publisher, emit, and tear down, the bridge had already relayed the message and the client had already printed it BEFORE the server got around to its own log line. Reads as desync on screen even though nothing is wrong on the wire. Fix: hoist the `log "publishing #N..."` line above the publish subshell in both `ros1_server.sh` and `ros2_server.sh`. Two new smoke regression tests assert this ordering invariant via `awk` line-number comparison; total bats count `54 -> 56`.
+
 ### Changed
 - **Demo publishers now embed a sequence counter** so each message on `/chatter_1to2` and `/chatter_2to1` is distinguishable. `ros1_server.sh` step 4/4 swaps `rostopic pub -r 1 ... data: 'hello from ROS 1'` for a bash `while` loop running `rostopic pub --once ... data: 'hello from ROS 1 #${seq}'`; `ros2_server.sh` makes the symmetric swap to `ros2 topic pub --once`. Effective rate degrades to ~0.5-0.7 Hz because each iteration re-initialises rospy / rclpy, but for a demo the trade-off is worth it: client output goes from "every line identical" to a per-iteration counter (`#1`, `#2`, ...) that makes message flow visibly verifiable. Two new smoke regression tests (one per server) guard the counter pattern via static `grep` assertions; total bats count `52 -> 54`.
 
