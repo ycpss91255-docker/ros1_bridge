@@ -264,9 +264,13 @@ COPY .hadolint.yaml /lint/.hadolint.yaml
 COPY Dockerfile /lint/Dockerfile
 COPY .base/script/docker/build.sh .base/script/docker/run.sh .base/script/docker/exec.sh .base/script/docker/stop.sh /lint/
 COPY .base/script/docker/_lib.sh .base/script/docker/i18n.sh /lint/
+# base v0.28.0+ split _lib.sh into focused sub-libs under script/docker/lib/.
+# _lib.sh now sources `${_lib_dir}/lib/{log,env,conf,compose,config_summary}.sh`,
+# so the lint stage needs the `lib/` subdir alongside the umbrella loader.
+COPY .base/script/docker/lib/ /lint/lib/
 COPY script/*.sh /lint/
 COPY script/docker/*.sh /lint/
-RUN shellcheck -S warning /lint/*.sh
+RUN shellcheck -S warning /lint/*.sh /lint/lib/*.sh
 RUN cd /lint && hadolint Dockerfile
 
 # Bats + extensions (from pre-built test-tools image; bats-support / bats-assert
