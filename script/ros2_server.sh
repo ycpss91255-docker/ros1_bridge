@@ -15,17 +15,23 @@ set -euo pipefail
 readonly TOPIC="/chatter_2to1"
 readonly BRIDGE_YAML="/demo_bridge.yaml"
 readonly DEFAULT_MESSAGE="hello from ROS 2"
+readonly DEFAULT_RATE="10"
+readonly DEMO_PUB_PY="/root/demo/demo_pub_ros2.py"
 
 usage() {
     cat >&2 <<EOF
-Usage: ros2_server.sh [-h|--help]
+Usage: ros2_server.sh [-h|--help] [--rate <Hz>]
 
 Demo B (ROS 2 -> ROS 1) — server / publisher side.
 
 Bootstraps roscore + parameter_bridge from ${BRIDGE_YAML}, then publishes
-std_msgs/msg/String on ${TOPIC} at 1 Hz from ROS 2.
+std_msgs/msg/String on ${TOPIC} from ROS 2 via ${DEMO_PUB_PY}
+(long-lived rclpy node + Timer, single rclpy init at startup).
 
 Pair with ros1_client.sh on a second terminal.
+
+Options:
+  --rate <Hz>   Publish rate in Hz (default: ${DEFAULT_RATE}).
 
 Environment:
   MESSAGE   Override the published string (default: "${DEFAULT_MESSAGE}").
@@ -80,11 +86,26 @@ cleanup() {
 }
 
 main() {
-    case "${1:-}" in
-        -h|--help) usage; exit 0 ;;
-    esac
-
     local message="${MESSAGE:-${DEFAULT_MESSAGE}}"
+    local rate="${DEFAULT_RATE}"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            --rate)
+                rate="${2:?--rate requires a value (e.g. 10)}"
+                shift 2
+                ;;
+            *)
+                printf 'ros2_server.sh: unknown argument: %s\n' "$1" >&2
+                usage
+                exit 1
+                ;;
+        esac
+    done
 
     log "step 1/4: starting roscore in background — ROS 1 only env (log: /tmp/roscore.log)"
     ( ros1_env; exec roscore ) >/tmp/roscore.log 2>&1 &
@@ -114,23 +135,14 @@ main() {
     done
     log "        bridge ready (pid=${BRIDGE_PID})"
 
-    log "step 4/4: publishing on ${TOPIC} with sequence counter — ROS 2 (${ROS2_DISTRO}) env"
-    log "        Each iteration spawns ros2 topic pub --once, so effective rate"
-    log "        is ~0.5-0.7 Hz (rclpy init dominates). Ctrl+C to stop everything."
-    # Log BEFORE the publish call, not after: ros2 topic pub --once takes
-    # ~700ms to spin up rclpy, register the publisher, and emit -- during
-    # which the bridge has already relayed the message and the ROS 1
-    # client has printed it. Logging after the subshell exits would make
-    # the server's "#N" appear chronologically AFTER the client's #N,
-    # which reads as desync even though everything is fine on the wire.
-    local seq=0
-    while true; do
-        seq=$((seq + 1))
-        log "        publishing #${seq}..."
-        ( ros2_env; exec ros2 topic pub --once "${TOPIC}" std_msgs/msg/String \
-            "{data: '${message} #${seq}'}" ) >/dev/null 2>&1
-        sleep 1
-    done
+    log "step 4/4: handing off to ${DEMO_PUB_PY} at ${rate} Hz — ROS 2 (${ROS2_DISTRO}) env"
+    log "        Long-lived rclpy node + Timer: no per-iteration rclpy init,"
+    log "        so the requested rate is the actual rate. Counter is in"
+    log "        the Python process. Ctrl+C to stop everything."
+    ( ros2_env; exec python3 "${DEMO_PUB_PY}" \
+        --topic "${TOPIC}" \
+        --message "${message}" \
+        --rate "${rate}" )
 }
 
 main "$@"

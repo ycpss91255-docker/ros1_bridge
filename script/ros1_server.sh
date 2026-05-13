@@ -15,17 +15,23 @@ set -euo pipefail
 readonly TOPIC="/chatter_1to2"
 readonly BRIDGE_YAML="/demo_bridge.yaml"
 readonly DEFAULT_MESSAGE="hello from ROS 1"
+readonly DEFAULT_RATE="10"
+readonly DEMO_PUB_PY="/root/demo/demo_pub_ros1.py"
 
 usage() {
     cat >&2 <<EOF
-Usage: ros1_server.sh [-h|--help]
+Usage: ros1_server.sh [-h|--help] [--rate <Hz>]
 
 Demo A (ROS 1 -> ROS 2) — server / publisher side.
 
 Bootstraps roscore + parameter_bridge from ${BRIDGE_YAML}, then publishes
-std_msgs/String on ${TOPIC} at 1 Hz from ROS 1.
+std_msgs/String on ${TOPIC} from ROS 1 via ${DEMO_PUB_PY}
+(long-lived rospy.Publisher, single rospy init at startup).
 
 Pair with ros2_client.sh on a second terminal.
+
+Options:
+  --rate <Hz>   Publish rate in Hz (default: ${DEFAULT_RATE}).
 
 Environment:
   MESSAGE   Override the published string (default: "${DEFAULT_MESSAGE}").
@@ -73,11 +79,26 @@ cleanup() {
 }
 
 main() {
-    case "${1:-}" in
-        -h|--help) usage; exit 0 ;;
-    esac
-
     local message="${MESSAGE:-${DEFAULT_MESSAGE}}"
+    local rate="${DEFAULT_RATE}"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            --rate)
+                rate="${2:?--rate requires a value (e.g. 10)}"
+                shift 2
+                ;;
+            *)
+                printf 'ros1_server.sh: unknown argument: %s\n' "$1" >&2
+                usage
+                exit 1
+                ;;
+        esac
+    done
 
     log "step 1/4: starting roscore in background — ROS 1 only env (log: /tmp/roscore.log)"
     ( ros1_env; exec roscore ) >/tmp/roscore.log 2>&1 &
@@ -107,23 +128,14 @@ main() {
     done
     log "        bridge ready (pid=${BRIDGE_PID})"
 
-    log "step 4/4: publishing on ${TOPIC} with sequence counter — ROS 1 env"
-    log "        Each iteration spawns rostopic pub --once, so effective rate"
-    log "        is ~0.5-0.7 Hz (rospy init dominates). Ctrl+C to stop everything."
-    # Log BEFORE the publish call, not after: rostopic pub --once takes
-    # ~700ms to spin up rospy, register the publisher, and emit -- during
-    # which the bridge has already relayed the message and the ROS 2
-    # client has printed it. Logging after the subshell exits would make
-    # the server's "#N" appear chronologically AFTER the client's #N,
-    # which reads as desync even though everything is fine on the wire.
-    local seq=0
-    while true; do
-        seq=$((seq + 1))
-        log "        publishing #${seq}..."
-        ( ros1_env; exec rostopic pub --once "${TOPIC}" std_msgs/String \
-            "data: '${message} #${seq}'" ) >/dev/null 2>&1
-        sleep 1
-    done
+    log "step 4/4: handing off to ${DEMO_PUB_PY} at ${rate} Hz — ROS 1 env"
+    log "        Long-lived rospy.Publisher: no per-iteration rospy init,"
+    log "        so the requested rate is the actual rate. Counter is in"
+    log "        the Python process. Ctrl+C to stop everything."
+    ( ros1_env; exec python3 "${DEMO_PUB_PY}" \
+        --topic "${TOPIC}" \
+        --message "${message}" \
+        --rate "${rate}" )
 }
 
 main "$@"

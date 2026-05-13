@@ -131,6 +131,7 @@ COPY --chmod=0755 script/entrypoint.sh script/ros_entrypoint.sh /
 COPY --chmod=0755 \
     script/ros1_server.sh script/ros1_client.sh \
     script/ros2_server.sh script/ros2_client.sh \
+    script/demo_pub_ros1.py script/demo_pub_ros2.py \
     /root/demo/
 # bridge.yaml is gitignored (per-clone operator pick from config/ros1_bridge/,
 # see README "Bridge Configuration"). When the symlink is missing or broken
@@ -226,6 +227,7 @@ COPY --chmod=0755 script/entrypoint.sh script/ros_entrypoint.sh /
 COPY --chmod=0755 \
     script/ros1_server.sh script/ros1_client.sh \
     script/ros2_server.sh script/ros2_client.sh \
+    script/demo_pub_ros1.py script/demo_pub_ros2.py \
     /root/demo/
 # Same bridge.yaml fallback rule as the devel stage above. Closes #65 / #70.
 RUN --mount=type=bind,source=.,target=/ctx \

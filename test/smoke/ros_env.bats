@@ -176,59 +176,71 @@ setup() {
     assert_line --partial "Usage:"
 }
 
-@test "ros1_server.sh step 4/4 publishes with sequence counter (--once loop)" {
-    # Regression guard: step 4/4 must use `rostopic pub --once` inside a
-    # bash while loop with an incrementing `seq` counter so each published
-    # message is distinguishable. Reverting to `rostopic pub -r 1 ... data: 'fixed'`
-    # would silently regress the demo to "every line identical".
-    run grep -F 'rostopic pub --once' /root/demo/ros1_server.sh
+@test "demo_pub_ros1.py exists and is executable" {
+    assert [ -x "/root/demo/demo_pub_ros1.py" ]
+}
+
+@test "demo_pub_ros2.py exists and is executable" {
+    assert [ -x "/root/demo/demo_pub_ros2.py" ]
+}
+
+@test "demo_pub_ros1.py --help prints usage with --rate flag" {
+    # argparse auto-generates -h/--help; smoke that the file imports
+    # rospy/std_msgs cleanly and exposes --rate.
+    run bash -c "source /opt/ros/${ROS1_DISTRO}/setup.bash >/dev/null 2>&1 && /root/demo/demo_pub_ros1.py --help"
     assert_success
-    run grep -E 'seq=\$\(\(seq \+ 1\)\)' /root/demo/ros1_server.sh
+    assert_output --partial "--rate"
+    assert_output --partial "--topic"
+    assert_output --partial "--message"
+}
+
+@test "demo_pub_ros2.py --help prints usage with --rate flag" {
+    run bash -c "source /opt/ros/${ROS2_DISTRO}/setup.bash >/dev/null 2>&1 && /root/demo/demo_pub_ros2.py --help"
     assert_success
-    run grep -F '#${seq}' /root/demo/ros1_server.sh
+    assert_output --partial "--rate"
+    assert_output --partial "--topic"
+    assert_output --partial "--message"
+}
+
+@test "ros1_server.sh step 4/4 hands off to demo_pub_ros1.py (long-lived rospy)" {
+    # Regression guard: step 4/4 must exec the Python publisher, NOT a
+    # bash + rostopic pub --once loop. The bash loop pattern (PRs #93/#94)
+    # capped the achievable rate at ~0.6 Hz because each iteration paid
+    # the rospy init cost. Reverting to that pattern silently regresses
+    # the demo's user-configurable --rate flag.
+    run grep -F 'exec python3 "${DEMO_PUB_PY}"' /root/demo/ros1_server.sh
+    assert_success
+    run grep -F '/root/demo/demo_pub_ros1.py' /root/demo/ros1_server.sh
+    assert_success
+    run grep -E '^readonly DEFAULT_RATE=' /root/demo/ros1_server.sh
     assert_success
 }
 
-@test "ros2_server.sh step 4/4 publishes with sequence counter (--once loop)" {
-    # Same regression guard for the ROS 2 side (Demo B publisher).
-    run grep -F 'ros2 topic pub --once' /root/demo/ros2_server.sh
+@test "ros2_server.sh step 4/4 hands off to demo_pub_ros2.py (long-lived rclpy)" {
+    # Same guard for the ROS 2 side (Demo B publisher).
+    run grep -F 'exec python3 "${DEMO_PUB_PY}"' /root/demo/ros2_server.sh
     assert_success
-    run grep -E 'seq=\$\(\(seq \+ 1\)\)' /root/demo/ros2_server.sh
+    run grep -F '/root/demo/demo_pub_ros2.py' /root/demo/ros2_server.sh
     assert_success
-    run grep -F '#${seq}' /root/demo/ros2_server.sh
+    run grep -E '^readonly DEFAULT_RATE=' /root/demo/ros2_server.sh
     assert_success
 }
 
-@test "ros1_server.sh logs 'publishing #N' BEFORE rostopic pub --once" {
-    # Regression guard: `log "publishing #..."` must appear in source order
-    # BEFORE the `exec rostopic pub --once` call. rostopic pub --once takes
-    # ~700ms to spin up rospy and emit; logging after the subshell exits
-    # makes the server's #N appear chronologically AFTER the client's #N,
-    # which reads as desync. The fix is purely cosmetic but matters for
-    # readability of paired terminal output.
-    #
-    # Match `exec rostopic pub --once` (not bare `rostopic pub --once`) to
-    # skip the explanatory `log "...spawns rostopic pub --once..."` line
-    # earlier in the same step which also contains the substring.
-    local log_line pub_line
-    log_line=$(awk '/log "        publishing #/{print NR; exit}' /root/demo/ros1_server.sh)
-    pub_line=$(awk '/exec rostopic pub --once/{print NR; exit}' /root/demo/ros1_server.sh)
-    [[ -n "${log_line}" ]] || fail "no 'publishing #' log line found"
-    [[ -n "${pub_line}" ]] || fail "no 'exec rostopic pub --once' found"
-    [ "${log_line}" -lt "${pub_line}" ] \
-        || fail "log line ${log_line} must precede publish line ${pub_line}"
+@test "ros1_server.sh accepts --rate flag (forwards to python publisher)" {
+    # Smoke: the bash arg parser must recognise --rate <Hz>. The full
+    # end-to-end (publish at that rate) is integration scope; here we
+    # just assert the parser handles --rate and forwards it to python.
+    run grep -F -- '--rate)' /root/demo/ros1_server.sh
+    assert_success
+    run grep -F -- '--rate "${rate}"' /root/demo/ros1_server.sh
+    assert_success
 }
 
-@test "ros2_server.sh logs 'publishing #N' BEFORE ros2 topic pub --once" {
-    # Same ordering guard for the ROS 2 side. Matches `exec ros2 topic pub
-    # --once` to skip the explanatory log line containing the same substring.
-    local log_line pub_line
-    log_line=$(awk '/log "        publishing #/{print NR; exit}' /root/demo/ros2_server.sh)
-    pub_line=$(awk '/exec ros2 topic pub --once/{print NR; exit}' /root/demo/ros2_server.sh)
-    [[ -n "${log_line}" ]] || fail "no 'publishing #' log line found"
-    [[ -n "${pub_line}" ]] || fail "no 'exec ros2 topic pub --once' found"
-    [ "${log_line}" -lt "${pub_line}" ] \
-        || fail "log line ${log_line} must precede publish line ${pub_line}"
+@test "ros2_server.sh accepts --rate flag (forwards to python publisher)" {
+    run grep -F -- '--rate)' /root/demo/ros2_server.sh
+    assert_success
+    run grep -F -- '--rate "${rate}"' /root/demo/ros2_server.sh
+    assert_success
 }
 
 # -------------------- colcon build parallelism (closes #79) --------------------

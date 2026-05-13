@@ -1,6 +1,6 @@
 # TEST.md
 
-**56 tests** total (31 in `ros_env.bats` + 25 in `script_help.bats`).
+**60 tests** total (35 in `ros_env.bats` + 25 in `script_help.bats`).
 
 ## test/smoke/ros_env.bats
 
@@ -34,7 +34,7 @@
 | `entrypoint.sh skips rosparam load when roscore unreachable` | `timeout 2 rosparam list` guards the `rosparam load` so a missing roscore doesn't hang container boot |
 | `entrypoint.sh handles --help in CMD without source-propagation error` | Regression for #59: `source FILE --` prevents catkin's `_setup_util.py "$@"` from seeing CMD's `--help` and emitting argparse usage that breaks the temp-file source step |
 
-### Demo helpers (14)
+### Demo helpers (18)
 
 | Test | Description |
 |------|-------------|
@@ -48,10 +48,14 @@
 | `ros1_client.sh -h prints usage` | Help exits 0 with "Usage:" |
 | `ros2_server.sh -h prints usage` | Help exits 0 with "Usage:" |
 | `ros2_client.sh -h prints usage` | Help exits 0 with "Usage:" |
-| `ros1_server.sh step 4/4 publishes with sequence counter (--once loop)` | Regression guard: step 4/4 must use `rostopic pub --once` inside a `while` loop with incrementing `seq`, so each published message ends with `#${seq}` and Demo A client output is distinguishable per iteration |
-| `ros2_server.sh step 4/4 publishes with sequence counter (--once loop)` | Same guard for the ROS 2 side: step 4/4 must use `ros2 topic pub --once` inside a `while` loop with incrementing `seq` for Demo B |
-| `ros1_server.sh logs 'publishing #N' BEFORE rostopic pub --once` | Ordering guard: the `log "publishing #..."` line must precede the `rostopic pub --once` call in source order, so server output reaches the terminal BEFORE the client receives the message (rostopic pub --once takes ~700ms; logging after would make server #N appear after client #N) |
-| `ros2_server.sh logs 'publishing #N' BEFORE ros2 topic pub --once` | Same ordering guard for the ROS 2 side (Demo B publisher) |
+| `demo_pub_ros1.py exists and is executable` | `/root/demo/demo_pub_ros1.py` is executable; long-lived rospy.Publisher backing ros1_server.sh step 4/4 |
+| `demo_pub_ros2.py exists and is executable` | `/root/demo/demo_pub_ros2.py` is executable; long-lived rclpy node backing ros2_server.sh step 4/4 |
+| `demo_pub_ros1.py --help prints usage with --rate flag` | argparse --help works after sourcing `/opt/ros/${ROS1_DISTRO}/setup.bash`; output mentions `--rate`, `--topic`, `--message` |
+| `demo_pub_ros2.py --help prints usage with --rate flag` | argparse --help works after sourcing `/opt/ros/${ROS2_DISTRO}/setup.bash`; output mentions `--rate`, `--topic`, `--message` |
+| `ros1_server.sh step 4/4 hands off to demo_pub_ros1.py (long-lived rospy)` | Regression guard: step 4/4 must `exec python3 ${DEMO_PUB_PY}` (single rospy init at startup), NOT the previous bash + `rostopic pub --once` loop. The loop pattern capped achievable rate at ~0.6 Hz; the Python publisher lifts that to the requested `--rate` |
+| `ros2_server.sh step 4/4 hands off to demo_pub_ros2.py (long-lived rclpy)` | Same guard for the ROS 2 side (Demo B publisher) |
+| `ros1_server.sh accepts --rate flag (forwards to python publisher)` | bash arg parser handles `--rate <Hz>` and forwards via `--rate "${rate}"` to `demo_pub_ros1.py` |
+| `ros2_server.sh accepts --rate flag (forwards to python publisher)` | Same for the ROS 2 side |
 
 ### colcon build parallelism (2)
 
