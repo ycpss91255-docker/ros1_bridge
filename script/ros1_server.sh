@@ -20,7 +20,7 @@ readonly DEMO_PUB_PY="/root/demo/demo_pub_ros1.py"
 
 usage() {
     cat >&2 <<EOF
-Usage: ros1_server.sh [-h|--help] [--rate <Hz>]
+Usage: ros1_server.sh [-h|--help] [-r|--rate <Hz>]
 
 Demo A (ROS 1 -> ROS 2) — server / publisher side.
 
@@ -31,7 +31,7 @@ std_msgs/String on ${TOPIC} from ROS 1 via ${DEMO_PUB_PY}
 Pair with ros2_client.sh on a second terminal.
 
 Options:
-  --rate <Hz>   Publish rate in Hz (default: ${DEFAULT_RATE}).
+  -r, --rate <Hz>   Publish rate in Hz (default: ${DEFAULT_RATE}).
 
 Environment:
   MESSAGE   Override the published string (default: "${DEFAULT_MESSAGE}").
@@ -88,8 +88,8 @@ main() {
                 usage
                 exit 0
                 ;;
-            --rate)
-                rate="${2:?--rate requires a value (e.g. 10)}"
+            -r|--rate)
+                rate="${2:?-r/--rate requires a value (e.g. 10)}"
                 shift 2
                 ;;
             *)

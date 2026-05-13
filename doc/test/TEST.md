@@ -54,8 +54,8 @@
 | `demo_pub_ros2.py --help prints usage with --rate flag` | argparse --help works after sourcing `/opt/ros/${ROS2_DISTRO}/setup.bash`; output mentions `--rate`, `--topic`, `--message` |
 | `ros1_server.sh step 4/4 hands off to demo_pub_ros1.py (long-lived rospy)` | Regression guard: step 4/4 must `exec python3 ${DEMO_PUB_PY}` (single rospy init at startup), NOT the previous bash + `rostopic pub --once` loop. The loop pattern capped achievable rate at ~0.6 Hz; the Python publisher lifts that to the requested `--rate` |
 | `ros2_server.sh step 4/4 hands off to demo_pub_ros2.py (long-lived rclpy)` | Same guard for the ROS 2 side (Demo B publisher) |
-| `ros1_server.sh accepts --rate flag (forwards to python publisher)` | bash arg parser handles `--rate <Hz>` and forwards via `--rate "${rate}"` to `demo_pub_ros1.py` |
-| `ros2_server.sh accepts --rate flag (forwards to python publisher)` | Same for the ROS 2 side |
+| `ros1_server.sh accepts -r/--rate flag (forwards to python publisher)` | bash arg parser handles BOTH `-r <Hz>` and `--rate <Hz>` (`-r\|--rate)` case-arm) and forwards via `--rate "${rate}"` to `demo_pub_ros1.py`. The short alias mirrors `run.sh -t/--target` convention |
+| `ros2_server.sh accepts -r/--rate flag (forwards to python publisher)` | Same for the ROS 2 side |
 
 ### colcon build parallelism (2)
 
