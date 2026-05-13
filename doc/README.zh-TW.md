@@ -101,8 +101,8 @@ setup.conf 改動只影響本地 build；發布到 `ghcr.io/ycpss91255-docker/ro
 
 ```bash
 ./build.sh                       # 建置 devel（預設）
-./build.sh test                  # 建置含 smoke test
-./build.sh runtime               # 建置精簡的 runtime image
+./build.sh -t test               # 建置含 smoke test
+./build.sh -t runtime            # 建置精簡的 runtime image
 ```
 
 ### 執行

@@ -104,8 +104,8 @@ regardless of what `setup.conf` says.
 
 ```bash
 ./build.sh                       # Build devel (default)
-./build.sh test                  # Build with smoke tests
-./build.sh runtime               # Build the lean runtime image
+./build.sh -t test               # Build with smoke tests
+./build.sh -t runtime            # Build the lean runtime image
 ```
 
 ### Run
