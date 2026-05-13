@@ -114,9 +114,17 @@ main() {
     done
     log "        bridge ready (pid=${BRIDGE_PID})"
 
-    log "step 4/4: publishing on ${TOPIC} at 1 Hz: \"${message}\" — ROS 2 (${ROS2_DISTRO}) env"
-    log "        Ctrl+C to stop everything."
-    ( ros2_env; exec ros2 topic pub -r 1 "${TOPIC}" std_msgs/msg/String "{data: '${message}'}" )
+    log "step 4/4: publishing on ${TOPIC} with sequence counter — ROS 2 (${ROS2_DISTRO}) env"
+    log "        Each iteration spawns ros2 topic pub --once, so effective rate"
+    log "        is ~0.5-0.7 Hz (rclpy init dominates). Ctrl+C to stop everything."
+    local seq=0
+    while true; do
+        seq=$((seq + 1))
+        ( ros2_env; exec ros2 topic pub --once "${TOPIC}" std_msgs/msg/String \
+            "{data: '${message} #${seq}'}" ) >/dev/null 2>&1
+        log "        published #${seq}"
+        sleep 1
+    done
 }
 
 main "$@"
