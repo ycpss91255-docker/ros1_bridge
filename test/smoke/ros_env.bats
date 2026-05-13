@@ -226,18 +226,21 @@ setup() {
     assert_success
 }
 
-@test "ros1_server.sh accepts --rate flag (forwards to python publisher)" {
-    # Smoke: the bash arg parser must recognise --rate <Hz>. The full
-    # end-to-end (publish at that rate) is integration scope; here we
-    # just assert the parser handles --rate and forwards it to python.
-    run grep -F -- '--rate)' /root/demo/ros1_server.sh
+@test "ros1_server.sh accepts -r/--rate flag (forwards to python publisher)" {
+    # Smoke: the bash arg parser must recognise BOTH -r and --rate. The
+    # short alias mirrors run.sh / exec.sh's -t/--target convention --
+    # users coming from those wrappers expect short flags everywhere.
+    # End-to-end rate verification is integration scope; here we just
+    # assert the parser case-arm covers both forms and forwards via
+    # --rate to the Python helper.
+    run grep -E -- '^[[:space:]]+-r\|--rate\)' /root/demo/ros1_server.sh
     assert_success
     run grep -F -- '--rate "${rate}"' /root/demo/ros1_server.sh
     assert_success
 }
 
-@test "ros2_server.sh accepts --rate flag (forwards to python publisher)" {
-    run grep -F -- '--rate)' /root/demo/ros2_server.sh
+@test "ros2_server.sh accepts -r/--rate flag (forwards to python publisher)" {
+    run grep -E -- '^[[:space:]]+-r\|--rate\)' /root/demo/ros2_server.sh
     assert_success
     run grep -F -- '--rate "${rate}"' /root/demo/ros2_server.sh
     assert_success
