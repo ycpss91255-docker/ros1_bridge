@@ -176,6 +176,29 @@ setup() {
     assert_line --partial "Usage:"
 }
 
+@test "ros1_server.sh step 4/4 publishes with sequence counter (--once loop)" {
+    # Regression guard: step 4/4 must use `rostopic pub --once` inside a
+    # bash while loop with an incrementing `seq` counter so each published
+    # message is distinguishable. Reverting to `rostopic pub -r 1 ... data: 'fixed'`
+    # would silently regress the demo to "every line identical".
+    run grep -F 'rostopic pub --once' /root/demo/ros1_server.sh
+    assert_success
+    run grep -E 'seq=\$\(\(seq \+ 1\)\)' /root/demo/ros1_server.sh
+    assert_success
+    run grep -F '#${seq}' /root/demo/ros1_server.sh
+    assert_success
+}
+
+@test "ros2_server.sh step 4/4 publishes with sequence counter (--once loop)" {
+    # Same regression guard for the ROS 2 side (Demo B publisher).
+    run grep -F 'ros2 topic pub --once' /root/demo/ros2_server.sh
+    assert_success
+    run grep -E 'seq=\$\(\(seq \+ 1\)\)' /root/demo/ros2_server.sh
+    assert_success
+    run grep -F '#${seq}' /root/demo/ros2_server.sh
+    assert_success
+}
+
 # -------------------- colcon build parallelism (closes #79) --------------------
 
 @test "colcon_build_bridge.sh: --print-jobs emits auto-detected -j<N> line" {

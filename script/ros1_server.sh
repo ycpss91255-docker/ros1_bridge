@@ -107,9 +107,17 @@ main() {
     done
     log "        bridge ready (pid=${BRIDGE_PID})"
 
-    log "step 4/4: publishing on ${TOPIC} at 1 Hz: \"${message}\" — ROS 1 env"
-    log "        Ctrl+C to stop everything."
-    ( ros1_env; exec rostopic pub -r 1 "${TOPIC}" std_msgs/String "data: '${message}'" )
+    log "step 4/4: publishing on ${TOPIC} with sequence counter — ROS 1 env"
+    log "        Each iteration spawns rostopic pub --once, so effective rate"
+    log "        is ~0.5-0.7 Hz (rospy init dominates). Ctrl+C to stop everything."
+    local seq=0
+    while true; do
+        seq=$((seq + 1))
+        ( ros1_env; exec rostopic pub --once "${TOPIC}" std_msgs/String \
+            "data: '${message} #${seq}'" ) >/dev/null 2>&1
+        log "        published #${seq}"
+        sleep 1
+    done
 }
 
 main "$@"
