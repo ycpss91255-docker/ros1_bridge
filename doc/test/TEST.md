@@ -1,6 +1,6 @@
 # TEST.md
 
-**60 tests** total (35 in `ros_env.bats` + 25 in `script_help.bats`).
+**62 tests** total (37 in `ros_env.bats` + 25 in `script_help.bats`).
 
 ## test/smoke/ros_env.bats
 
@@ -34,7 +34,7 @@
 | `entrypoint.sh skips rosparam load when roscore unreachable` | `timeout 2 rosparam list` guards the `rosparam load` so a missing roscore doesn't hang container boot |
 | `entrypoint.sh handles --help in CMD without source-propagation error` | Regression for #59: `source FILE --` prevents catkin's `_setup_util.py "$@"` from seeing CMD's `--help` and emitting argparse usage that breaks the temp-file source step |
 
-### Demo helpers (18)
+### Demo helpers (20)
 
 | Test | Description |
 |------|-------------|
@@ -56,6 +56,8 @@
 | `ros2_server.sh step 4/4 hands off to demo_pub_ros2.py (long-lived rclpy)` | Same guard for the ROS 2 side (Demo B publisher) |
 | `ros1_server.sh accepts -r/--rate flag (forwards to python publisher)` | bash arg parser handles BOTH `-r <Hz>` and `--rate <Hz>` (`-r\|--rate)` case-arm) and forwards via `--rate "${rate}"` to `demo_pub_ros1.py`. The short alias mirrors `run.sh -t/--target` convention |
 | `ros2_server.sh accepts -r/--rate flag (forwards to python publisher)` | Same for the ROS 2 side |
+| `ros1_client.sh waits for roscore before subscribing` | Regression guard: client must poll `rostopic list >/dev/null 2>&1` until roscore is reachable, then subscribe. Without this, opening the client before its paired ros2_server.sh used to ROSMasterException-and-exit immediately |
+| `ros2_client.sh waits for the bridged topic before subscribing` | Same UX-symmetry guard for the ROS 2 side. Polls `ros2 topic list \| grep -qx ${TOPIC}` until the bridge republishes the topic, then subscribes. Without this, `ros2 topic echo` sits silently with zero output -- indistinguishable from "subscribed, no publisher" |
 
 ### colcon build parallelism (2)
 

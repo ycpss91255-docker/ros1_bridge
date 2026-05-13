@@ -29,7 +29,7 @@ main() {
         -h|--help) usage; exit 0 ;;
     esac
 
-    log "step 1/2: sourcing ROS 1 (${ROS1_DISTRO})"
+    log "step 1/3: sourcing ROS 1 (${ROS1_DISTRO})"
     # `set +u` / `set -u` brackets isolate ROS's setup.bash chain
     # (catkin + ament profile.d dereference unbound vars) from our
     # strict-mode -- canonical pattern for sourcing third-party
@@ -40,7 +40,23 @@ main() {
     source "/opt/ros/${ROS1_DISTRO}/setup.bash"
     set -u
 
-    log "step 2/2: subscribing to ${TOPIC} (Ctrl+C to stop)"
+    # Wait indefinitely for the paired ros2_server.sh to bring up roscore
+    # + parameter_bridge. Without this, opening the client terminal
+    # first crashes immediately with ROSMasterException -- demo UX bug.
+    # Ctrl+C to bail out. Heartbeat every ~5s so the wait doesn't look
+    # like a hang.
+    log "step 2/3: waiting for roscore at ${ROS_MASTER_URI:-http://localhost:11311}..."
+    local _waited=0
+    until rostopic list >/dev/null 2>&1; do
+        _waited=$((_waited + 1))
+        if [[ $((_waited % 25)) -eq 0 ]]; then
+            log "        still waiting for roscore... ($((_waited / 5))s)"
+        fi
+        sleep 0.2
+    done
+    log "        roscore reachable"
+
+    log "step 3/3: subscribing to ${TOPIC} (Ctrl+C to stop)"
     rostopic echo "${TOPIC}"
 }
 
