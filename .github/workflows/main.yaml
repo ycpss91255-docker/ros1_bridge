@@ -18,51 +18,63 @@ permissions:
 
 jobs:
   call-docker-build:
-    # Matrix across ROS 2 distros — Noetic source-built into both
-    # humble (jammy) and jazzy (noble) targets per issue #53. Each
-    # distro is built and pushed under its own image_name to keep
-    # registry tags unambiguous (e.g. ros1_bridge-jazzy:devel).
-    strategy:
-      fail-fast: false
-      matrix:
-        ros2_distro: [humble, jazzy]
-    uses: ycpss91255-docker/base/.github/workflows/build-worker.yaml@v0.28.2
+    # Migrated from inline matrix expression to the multi-distro
+    # dispatcher reusable workflow (base#325 B-1, ships in base
+    # v0.29.0; image_name separator hyphen-corrected in v0.29.1).
+    # The dispatcher resolves the per-event distro subset internally:
+    # pull_request -> pr_distros (subset, cuts PR wall-time roughly
+    # in half — humble-only at PR time); everything else (tag push,
+    # main push, workflow_dispatch) -> tag_distros (full release
+    # matrix). Each shard's image_name is derived as
+    # `<image_name>-<matrix.distro>` (matching the pre-migration
+    # shape `ros1_bridge-${distro}`). distro_input_name maps
+    # `<distro>` into the `ROS2_DISTRO` build-arg the Dockerfile
+    # consumes. `cache_variant` is auto-set per shard so buildx GHA
+    # cache shards by distro.
+    #
+    # No `BRIDGE_FILE=` override here — CI runs with no `bridge.yaml`
+    # symlink in the context, exercising the Dockerfile-internal
+    # fallback to `config/demo_bridge.yaml` (closes #65). This keeps
+    # the fallback path under continuous regression coverage.
+    uses: ycpss91255-docker/base/.github/workflows/multi-distro-build-worker.yaml@v0.29.1
     with:
-      image_name: ros1_bridge-${{ matrix.ros2_distro }}
+      image_name: ros1_bridge
+      pr_distros: '["humble"]'
+      tag_distros: '["humble", "jazzy"]'
+      distro_input_name: ROS2_DISTRO
       build_runtime: true
       platforms: linux/amd64,linux/arm64
-      test_tools_version: v0.20.1
-      # No `BRIDGE_FILE=` override here — CI runs with no `bridge.yaml`
-      # symlink in the context, exercising the Dockerfile-internal fallback
-      # to `config/demo_bridge.yaml` (closes #65). This also keeps the
-      # fallback path under continuous regression coverage.
-      build_args: |
-        ROS2_DISTRO=${{ matrix.ros2_distro }}
+      test_tools_version: v0.29.1
 
-  # Stable umbrella check that aggregates the matrix shards into a single
-  # status name. Branch protection requires only `ci-summary` so adding
-  # a new ROS 2 distro to the matrix above does not require updating the
-  # protection rule each time. Marked `if: always()` so the job runs even
-  # when shards fail, and asserts every dependency was a success.
+  # Branch protection requires `ci-summary`. The dispatcher itself emits
+  # a `ci-passed` rollup internally; this `ci-summary` job mirrors that
+  # outcome so the existing branch-protection context name stays
+  # unchanged. `needs: call-docker-build` now waits on the dispatcher's
+  # overall result (a rollup of its own matrix), so a failure in any
+  # internal shard still surfaces as a non-success `result`.
   ci-summary:
     needs: call-docker-build
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Verify all matrix shards succeeded
+      - name: Verify dispatcher rollup succeeded
         env:
           RESULT: ${{ needs.call-docker-build.result }}
         run: |
-          echo "call-docker-build result: ${RESULT}"
+          echo "call-docker-build (dispatcher) result: ${RESULT}"
           test "${RESULT}" = "success"
 
   call-release:
+    # Release stays as a 1D matrix tag-time job — the dispatcher is
+    # build-only. Tag pushes still want all distros archived; PR-time
+    # this job is skipped via the startsWith(github.ref, 'refs/tags/')
+    # gate.
     needs: call-docker-build
     if: startsWith(github.ref, 'refs/tags/')
     strategy:
       fail-fast: false
       matrix:
         ros2_distro: [humble, jazzy]
-    uses: ycpss91255-docker/base/.github/workflows/release-worker.yaml@v0.28.2
+    uses: ycpss91255-docker/base/.github/workflows/release-worker.yaml@v0.29.1
     with:
       archive_name_prefix: ros1_bridge-${{ matrix.ros2_distro }}
