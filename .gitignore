@@ -17,3 +17,5 @@ setup.conf.bak
 
 
 setup.conf.local
+
+.docker.xauth
