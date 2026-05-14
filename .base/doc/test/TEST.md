@@ -1,6 +1,6 @@
 # TEST.md
 
-Template self-tests: **1184 tests** total (1128 unit + 56 integration).
+Template self-tests: **1233 tests** total (1177 unit + 56 integration).
 
 > Counted scope is the `make -f Makefile.ci test` self-test suite —
 > what runs in the `Self Test` CI job. The 36 shared smoke tests under
@@ -77,7 +77,7 @@ Template self-tests: **1184 tests** total (1128 unit + 56 integration).
 | `_log_plain with no tag exits non-zero (param ':?' guard)` | Required tag guard |
 | `_log_plain with unknown style + FORCE_COLOR=1 falls back to no ANSI (case match miss)` | Unknown style safe fallback |
 
-### test/unit/setup_spec.bats (272)
+### test/unit/setup_spec.bats (282)
 
 Covers core detection (user/hardware/docker/GPU/GUI), the INI parser
 (`_parse_ini_section`), setup.conf section merging (`_load_setup_conf`
@@ -90,6 +90,7 @@ writeback (first-time bootstrap / user-edit respect / opt-out).
 | Category | Tests |
 |----------|-------|
 | `detect_user_info` / `detect_hardware` / `detect_docker_hub_user` / `detect_gpu` / `detect_gui` | 11 |
+| `_is_ssh_x11` / `_setup_ssh_x11_cookie` (#321: 6 detection cases + cookie rewrite via stubbed xauth + warn on missing xauth + write_env XAUTHORITY override on/off) | 10 |
 | `_parse_ini_section` (section isolation, comments, trim, missing) | 6 |
 | `_load_setup_conf` (SETUP_CONF env, per-repo, template, replace) | 4 |
 | `_get_conf_value` / `_get_conf_list_sorted` (incl. empty-value skip) | 5 |
@@ -214,25 +215,39 @@ on doc-only PRs).
 | #272 GHA buildx cache: `cache_variant` input declared with empty default, `Compute cache scope` step emits `id: cache` + scope key into `GITHUB_OUTPUT`, 4 build steps set `cache-from: type=gha,scope=...`, 4 build steps set `cache-to: ...,mode=max`, default preserves zero-diff for single-call callers | 5 |
 | #273 doc-only PR fast-pass (Phase 1 + Phase 2 shell rewrite): `path-filter` job declared, classifier is pure shell (`git diff --name-only base...head` + `case` glob; no `dorny/paths-filter` dependency), reads EVENT_NAME / BASE_SHA / HEAD_SHA from env: keys so the case body stays portable, non-PR event short-circuits before git diff (BASE_SHA / HEAD_SHA empty on push / tag / workflow_dispatch), 6-path allowlist (`**/*.md`, `doc/**`, `LICENSE`, `.gitignore`, `.github/CODEOWNERS`, `.github/dependabot.yml`) in a single `case` arm, `compute-matrix` + `build` jobs gated on `code_changed == 'true'` (2 occurrences), `docker-build` aggregator handles `code_changed == 'false'` short-circuit + `needs: [path-filter, build]`, non-PR triggers always set `code_changed=true` | 8 |
 
-### test/unit/self_test_yaml_spec.bats (5)
+### test/unit/self_test_yaml_spec.bats (17)
 
-Structural assertions for `.github/workflows/self-test.yaml` (#305).
-Locks the actionlint gate so a future refactor cannot quietly drop
-the validator: the `actionlint` job exists and runs
-`rhysd/actionlint` via Docker pinned to an explicit version
-(`x.y.z`); the three downstream jobs (`test`, `integration-e2e`,
-`behavioural`) declare `needs: actionlint` so they cannot start
-until the workflow-validator class of regression that wedged
-v0.26.0-rc1 (`${{ matrix.X }}` outside step scope, refs #297) is
-caught early — before bats / docker matrix burns CI minutes.
+Structural assertions for `.github/workflows/self-test.yaml`. Locks
+two cumulative invariants:
+
+1. **#305 actionlint gate** — `actionlint` job declared, runs
+   `rhysd/actionlint` via Docker pinned to an explicit version
+   (`x.y.z`); downstream jobs (`test`, `integration-e2e`,
+   `behavioural`) need it so the workflow-validator class of
+   regression that wedged v0.26.0-rc1 (refs #297) is caught early.
+
+2. **#317 P1 classifier + buildx GHA cache** — a `classify` job
+   emits `code_changed` + `behavioural_relevant` outputs from PR
+   diff against the doc-only allow-list (`doc/**` + `README.md` +
+   `LICENSE`) and behavioural block-list (entrypoint.sh + compose
+   + Dockerfile.example/.test-tools + wrappers + init/upgrade +
+   `test/behavioural/**` + `.github/workflows/**`); the `test` job
+   always runs (required check) but short-circuits to SUCCESS on
+   doc-only PRs; `integration-e2e` and `behavioural` gate via
+   job-level `if:`; all three test-tools image builds use
+   `docker/build-push-action` with shared `scope=test-tools` GHA
+   cache.
 
 | Category | Tests |
 |----------|-------|
 | `actionlint` job declared | 1 |
 | `actionlint` step uses `rhysd/actionlint:<pinned-version>` Docker image | 1 |
-| `test` job declares `needs: actionlint` | 1 |
-| `integration-e2e` job declares `needs: actionlint` | 1 |
-| `behavioural` job declares `needs: actionlint` | 1 |
+| `classify` job declared with `code_changed` + `behavioural_relevant` outputs | 3 |
+| `classify` doc-only allow-list + behavioural block-list + non-PR default | 3 |
+| `test`/`integration-e2e`/`behavioural` declare `needs: [actionlint, classify]` | 3 |
+| `test` doc-only short-circuit + real-step `code_changed == 'true'` gate | 2 |
+| `integration-e2e` + `behavioural` job-level `if: code_changed == 'true'` | 2 |
+| `test` + `behavioural` use `docker/build-push-action@v6` with `scope=test-tools` GHA cache | 2 |
 
 ### test/unit/build_sh_spec.bats (50)
 
@@ -311,7 +326,7 @@ guards, usage help mention), and **`-v` / `--verbose` / `-vv` /
 `docker exec` itself does not build, but flag is accepted and `-vv`
 enables wrapper trace).
 
-### test/unit/stop_sh_spec.bats (25)
+### test/unit/stop_sh_spec.bats (29)
 
 Unit tests for `stop.sh` argument parsing, the `--all` multi-instance
 teardown, and i18n. `docker ps -a` output is PATH-shimmed via
@@ -328,9 +343,33 @@ no-instances message, `--all` multi-project teardown loop, fallback
 from the alt repo, short + long form, value-required and directory
 guards, usage help mention), and **`-v` / `--verbose` / `-vv` /
 `--very-verbose` flag** (#311: parity across wrappers; flag is a no-op
-for `docker compose down` but `-vv` still enables wrapper trace).
+for `docker compose down` but `-vv` still enables wrapper trace), and
+**`--prune` flag** (#319: opt-in lightweight cleanup after compose
+down — `docker network prune --filter until=10m` + `docker image prune
+--filter until=24h`; works alongside `--all` even when no instances
+found; usage help mentions `--prune` with the two grace windows; the
+plain `stop.sh --dry-run` path emits no `docker prune` commands).
 
-### test/unit/wrapper_lib_lookup_spec.bats (5)
+### test/unit/prune_sh_spec.bats (23)
+
+Unit tests for the new `script/docker/prune.sh` wrapper (#319) — atomic
+docker garbage cleanup with conservative per-target `--filter until=`
+defaults (network=10m, image=24h, builder=24h, volume=no filter). Sandbox
++ PATH-shimmed `docker` stub mirrors the build/run/exec/stop spec
+strategy; `docker compose` is never invoked here so no `.env` seeding is
+required beyond the sandbox layout.
+
+Covers: `--help` (en/zh-TW/zh-CN/ja), no-target exit-2 hint (English +
+zh-TW), `--until` / `--lang` value-required guards, unknown-flag
+exit-2, individual `--networks` / `--images` / `--builder` /
+`--volumes` dry-run output (each with its own default grace; volume
+output omits `--filter`), **`--all` aggregator** (network + image +
+builder; volumes intentionally excluded), **`--until <dur>` override**
+across all selected targets, **volume confirmation prompt** (`n`
+aborts with exit-1 + i18n "aborted" message; `-y` skips the prompt;
+zh-TW prompt body asserts), `-C` / `--chdir` parity (accepted but
+no-op for daemon-wide prune; value-required + directory guards),
+usage help mentions every flag family.
 
 Regression guard for **issue #282** — the four user-facing wrappers
 (`build.sh` / `run.sh` / `exec.sh` / `stop.sh`) must resolve `_lib.sh`
