@@ -1,6 +1,6 @@
 # TEST.md
 
-Template self-tests: **1278 tests** total (1221 unit + 57 integration).
+Template self-tests: **1336 tests** total (1275 unit + 61 integration).
 
 > Counted scope is the `make -f Makefile.ci test` self-test suite —
 > what runs in the `Self Test` CI job. The 36 shared smoke tests under
@@ -77,7 +77,7 @@ Template self-tests: **1278 tests** total (1221 unit + 57 integration).
 | `_log_plain with no tag exits non-zero (param ':?' guard)` | Required tag guard |
 | `_log_plain with unknown style + FORCE_COLOR=1 falls back to no ANSI (case match miss)` | Unknown style safe fallback |
 
-### test/unit/setup_spec.bats (283)
+### test/unit/setup_spec.bats (305)
 
 Covers core detection (user/hardware/docker/GPU/GUI), the INI parser
 (`_parse_ini_section`), setup.conf section merging (`_load_setup_conf`
@@ -119,8 +119,10 @@ writeback (first-time bootstrap / user-edit respect / opt-out).
 | Per-stage overrides #220 helpers (`_parse_stage_sections`, `_load_stage_overrides`, `_validate_stage_override_key` allowlist, `_resolve_stage_scalar`, `_resolve_stage_list` append/replace + ordering + meta-key skip) | 20 |
 | Per-stage overrides #220 compose emit integration (zero-diff regression for stages w/o overrides, `gui.mode=off` strips X11, `network.mode=bridge` per-stage + ports, `volumes.mount_inherit=false` replaces, orphan `[stage:foo]` WARN, disallowed override-key WARN, `[stage:sys]` hard-error) | 7 |
 | #285 `--quiet` / `-q` flag + success confirmation lines on set / add / remove / reset / apply (default-on confirmation with file: + next: hint on the 4 mutating subcommands; reset's existing `reset_done` line gated on `_quiet`; apply's existing 2-line summary gated on `_quiet`; mutation still writes to setup.conf under `--quiet`) | 11 |
+| #328 `[logging]` CLI orphan fix (`_setup_known_section` recognises `logging` + `logging.<svc>`; rightmost-dot spec parsing for `logging.<svc>.<key>`; `set/show/remove` round-trip on global + per-service keys; validators surface as `Invalid value` errors; whole-section `show logging` lists all 4 keys; per-service editing reaches devel / test / runtime through CLI subcommands) | 9 |
+| #338 apply CLI flags (`--gui auto|force|off` per-invocation override via print-resolved diff vs setup.conf; `--gui=force` short-form; invalid `--gui bogus` rejected; `--print-resolved` dumps key=value without writing `.env` / `compose.yaml`; `--no-x11-cookie` sets `X11_COOKIE_SKIP=1` in the dump; default `X11_COOKIE_SKIP=0`; `SETUP_GUI` env var overrides setup.conf when no CLI flag; CLI `--gui` wins over `SETUP_GUI` env var) | 9 |
 
-### test/unit/tui_spec.bats (97)
+### test/unit/tui_spec.bats (106)
 
 Pure-logic unit tests for the TUI support libraries (`_tui_conf.sh`).
 No dialog/whiptail invocations here — strictly validators, mount-string
@@ -137,6 +139,7 @@ parsers, and setup.conf round-trip.
 | `_edit_image_rule __remove` index compaction (#177) — first / middle / last / sole rule | 4 |
 | `_validate_additional_context` (#199: relative paths, BuildKit schemes, name punctuation, reject empty / missing pieces, reject invalid name shapes) | 5 |
 | Per-stage `[stage:NAME]` round-trip (#220: namespaced load, append new section, multi-section append, round-trip, in-place update of existing section) | 5 |
+| `_validate_log_*` (#328: driver name shape, max_size num+unit, max_file positive int, compress boolean; covers happy paths + rejection of empty / whitespace / wrong unit / decimals / case mismatches) | 7 |
 
 ### test/unit/tui_backend_spec.bats (28)
 
@@ -155,7 +158,7 @@ a canned response; exercised with `TUI_STUB_RESPONSE` / `TUI_STUB_EXIT`.
 | `_tui_msgbox` / `_tui_yesno` (correct flags, propagates exit code) | 2 |
 | whiptail flag-spelling translation (#136: `--ok-button` / `--cancel-button` instead of `--*-label`, no `--extra-button`) + Save-button unification (#178: dialog also drops `--extra-button`) | 6 |
 
-### test/unit/tui_flow.bats (94)
+### test/unit/tui_flow.bats (99)
 
 Interactive-flow tests for `setup_tui.sh` (#189). Sources `setup_tui.sh`
 directly and overrides `_tui_menu` / `_tui_select` / `_tui_inputbox` /
@@ -182,6 +185,7 @@ target areas the issue body called out.
 | Multi-section dispatch from main menu (network → host → save) | 1 |
 | Per-stage UI #220 (`_list_dockerfile_stages_available` from-Dockerfile + baseline filter, `_count_stage_overrides` OVR+CURRENT dedup + empty skip, `_edit_stage_gui` mode + __inherit, `_edit_stage_scalar` write + empty-clears, `_edit_stage_list` inherit toggle + add) | 10 |
 | Menu restructure #221 (i18n keys for main.runtime/mounts/features × 4 langs; `_render_runtime_menu` / `_render_mounts_menu` / `_render_features_menu` function existence; main-menu dispatch for image/build/runtime/mounts/features + bare network/deploy/gui/volumes/environment no longer dispatch from main; Runtime sub-menu dispatch for network/deploy/gui/environment + __back/Cancel; Mounts sub-menu dispatch for volumes/devices/tmpfs + __back/Cancel; Features sub-menu __back, per_stage enabled enters editor, per_stage hidden shows msgbox without entering editor; Advanced sub-menu image/build/devices/tmpfs entries removed, security still dispatches) | 31 |
+| #328 logging menu dispatch (Runtime menu's `logging` entry calls `_edit_section_logging`; `_edit_section_logging`'s top-level menu routes `global` to `_edit_logging_keys logging` and `devel` / `test` / `runtime` to `_edit_logging_keys logging.<svc>`) | 5 |
 
 ### test/unit/build_worker_yaml_spec.bats (32)
 
@@ -545,7 +549,7 @@ conditional GPU deploy block + GUI env/volumes + extra volumes from
 | `environment env_N supports multiple cross-references in one value (refs #236)` | multi-ref |
 | `environment env_N transitive cross-reference resolves through chain (refs #236)` | transitive |
 
-### test/unit/compose_logging_spec.bats (13)
+### test/unit/compose_logging_spec.bats (25)
 
 Covers `[logging]` + `[logging.<svc>]` support in
 `generate_compose_yaml` (#310). Tests the global emission on every
@@ -569,6 +573,37 @@ behaviour, and the two new setup.sh helpers `_parse_logging_svc_sections`
 | `_collect_logging reads global [logging] from per-repo setup.conf` | Per-repo source |
 | `_collect_logging reads per-service [logging.<svc>] sections` | Per-svc source |
 | `_collect_logging returns empty when no [logging] sections anywhere` | Total absence |
+| `local_path on global emits volumes mount + LOG_FILE_PATH env for devel (#328)` | Mount + env on devel |
+| `local_path empty omits mount + env (back-compat) (#328)` | Empty fallback |
+| `local_path on per-svc [logging.<svc>] emits LOG_FILE_PATH for that svc only (#328)` | Per-service emit |
+| `local_path absolute path is passed through verbatim (#328)` | Absolute path |
+| `local_path is NOT emitted as a logging.options key (driver-only options) (#328)` | local_path NOT a docker option |
+| `local_path on test service emits standalone volumes block + env (#328)` | test service |
+| `_sync_logging_local_paths_gitignore appends relative local_path to .gitignore (#328)` | gitignore append |
+| `_sync_logging_local_paths_gitignore skips absolute paths (#328)` | Absolute skip |
+| `_sync_logging_local_paths_gitignore skips ~ paths (#328)` | Tilde skip |
+| `_sync_logging_local_paths_gitignore is idempotent (#328)` | Re-run no-op |
+| `_sync_logging_local_paths_gitignore collects from both global + per-svc (#328)` | Multi-source |
+| `_sync_logging_local_paths_gitignore is no-op when no local_path keys (#328)` | Empty no-op |
+
+### test/unit/entrypoint_logging_spec.bats (6)
+
+Behaviour of `script/docker/_entrypoint_logging.sh` — the helper
+downstream repos source from their `script/entrypoint.sh` so
+container stdout/stderr is tee'd to the host bind-mounted log file
+when `[logging] local_path` is set (#328). Tests source the helper
+under controlled `LOG_FILE_PATH` env in subshells and assert both
+the host file content and the inherited stdout (preserving
+`docker logs` parity).
+
+| Test | Description |
+|------|-------------|
+| `entrypoint_logging is no-op when LOG_FILE_PATH unset (#328)` | Back-compat: do nothing |
+| `entrypoint_logging tees stdout to LOG_FILE_PATH when set (#328)` | Happy path |
+| `entrypoint_logging truncates LOG_FILE_PATH on each run (#328)` | Fresh container = fresh log |
+| `entrypoint_logging creates parent dir if missing (#328)` | mkdir -p safety net |
+| `entrypoint_logging warns + continues when target is a directory (#328)` | Failure-mode fallback |
+| `entrypoint_logging captures stderr along with stdout (#328)` | 2>&1 redirect |
 
 ### test/unit/template_spec.bats (147)
 
@@ -988,19 +1023,25 @@ invocation — `build.sh --dry-run`).
 | `fresh clone with stale absolute mount_1: build.sh auto-migrates + generates local .env` | Stale-path auto-migrate |
 | `fresh clone with portable ${WS_PATH} mount_1: no warning, .env gets local path` | Happy path round-trip |
 
-### test/integration/upgrade_spec.bats (8)
+### test/integration/upgrade_spec.bats (12)
 
 End-to-end verification for `upgrade.sh` driving a real subtree update
 against a fake template remote (bare repo with `v0.9.5` / `v0.9.7` tags
 on a minimal subtree layout) attached to a sandbox downstream repo.
 **Level 1** (no Docker). Exercises the happy path, the pre-flight
-guards, and — most importantly — the destructive-FF rollback path added
-after the Jetson v0.9.7 incident (stubs `git-subtree pull` via
-`GIT_EXEC_PATH` to simulate the bug and asserts the repo is restored).
+guards, the destructive-FF rollback path added after the Jetson v0.9.7
+incident (stubs `git-subtree pull` via `GIT_EXEC_PATH` to simulate the
+bug and asserts the repo is restored), and the post-#284 Dockerfile
+lint-stage auto-patch that heals downstream Dockerfiles missing the
+`COPY .base/script/docker/lib /lint/lib` line (#348).
 
 | Test | Description |
 |------|-------------|
 | `upgrade.sh v0.9.7: bumps template/.version, pulls new content, updates main.yaml` | Happy path |
+| `upgrade.sh patches Dockerfile lint stage when missing COPY .base/script/docker/lib /lint/lib (#348)` | Auto-heal post-#284 lib drift on first upgrade |
+| `upgrade.sh is idempotent on Dockerfile already containing the lib COPY line (#348)` | Already-patched Dockerfile is unchanged on re-run |
+| `upgrade.sh warns + skips Dockerfile patch when stock shellcheck anchor is missing (#348)` | Custom Dockerfile shape opts out of auto-heal |
+| `upgrade.sh continues cleanly when no Dockerfile at repo root (#348)` | Subtree-only repos (no consumer Dockerfile) skip silently |
 | `upgrade.sh v0.9.7 is idempotent on a second run` | Re-run is no-op |
 | `upgrade.sh --check reports update available from v0.9.5 → v0.9.7` | --check flag |
 | `make upgrade-check (downstream Makefile): exit 0 when update available (#175)` | Regression #175: make wraps exit 1 |

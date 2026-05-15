@@ -150,6 +150,9 @@ Downstream READMEs link here instead of duplicating the table.
 | `-t` / `--target TARGET` | yes (#280, alias to positional) | yes | yes | — (Q2: stays project-wide) | — |
 | `--instance NAME` | — (build-time concept) | yes | yes | yes | — |
 | `-q` / `--quiet` | — | — | — | — | yes (#285, on mutating subcommands) |
+| `--gui auto\|force\|off` | yes (#338) | yes (#338) | — | — | yes (apply, #338) |
+| `--no-x11-cookie` | yes (#338) | yes (#338) | — | — | yes (apply, #338) |
+| `--print-resolved` | — | — | — | — | yes (apply, #338) |
 | `--` separator | — | yes | yes (#289) | — | yes (per subcommand) |
 | Positional meaning | TARGET | CMD | CMD | `docker compose down` pass-through | subcommand name |
 
@@ -344,6 +347,7 @@ two derived artifacts.
 [volumes]  mount_1 (workspace, auto-populated on first run)
            mount_2..mount_N (extra host mounts; devices via /dev path)
 [logging]  driver (json-file default), max_size, max_file, compress
+           local_path (host-side log dir; bind-mounted to /var/log/<repo>)
            [logging.<svc>] for per-service key-level override
 ```
 
@@ -377,7 +381,7 @@ Main menu structure (#221):
 Main
 ├─ image            IMAGE_NAME detection rules
 ├─ build            APT mirrors + Dockerfile build args
-├─ Runtime  ──→     network / deploy (GPU) / gui / environment
+├─ Runtime  ──→     network / deploy (GPU) / gui / environment / logging
 ├─ Mounts   ──→     volumes / devices / tmpfs
 ├─ Advanced ──→     security / additional_contexts
 │                   / per_stage (conditional) / Reset
