@@ -2,16 +2,13 @@
 set -euo pipefail
 
 # Tee container stdout/stderr to /var/log/ros1_bridge/<service>.log when
-# setup.conf [logging] local_path is set (base v0.30.0+). Two guards:
-#   - ${USER:-root} default: build-time smoke (Dockerfile test stage) has
-#     no login env so $USER is unset, and set -u would otherwise crash.
-#   - File existence check: base ships the helper in .base/script/docker/
-#     which only mounts at compose-runtime via the workspace volume,
-#     not present during the test stage. No-op when missing.
-if [[ -f "/home/${USER:-root}/work/.base/script/docker/_entrypoint_logging.sh" ]]; then
-  # shellcheck source=/dev/null
-  . "/home/${USER:-root}/work/.base/script/docker/_entrypoint_logging.sh"
-fi
+# setup.conf [logging] local_path is set. Helper ships in-image at a
+# stable path since base v0.32.0 (base#368 / base PR #372), so the
+# source-line is un-guarded — no $USER / WS_PATH path arithmetic, no
+# file-existence check. The helper itself is a no-op when LOG_FILE_PATH
+# is unset.
+# shellcheck source=/dev/null
+. /usr/local/lib/base/_entrypoint_logging.sh
 
 # Source ROS 1 + ROS 2 + ros1_bridge install overlay. The trailing `--`
 # is required: bash's `source` propagates the calling script's positional

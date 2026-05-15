@@ -125,6 +125,9 @@ ARG BRIDGE_FILE="bridge.yaml"
 
 # Entrypoints stay at / (ENTRYPOINT below assumes /ros_entrypoint.sh).
 COPY --chmod=0755 script/entrypoint.sh script/ros_entrypoint.sh /
+# Base v0.32.0+ ships the [logging] tee helper into a stable in-image path
+# so entrypoint.sh can source it un-guarded; refs base#368, base PR #372.
+COPY --chmod=0755 .base/script/docker/_entrypoint_logging.sh /usr/local/lib/base/_entrypoint_logging.sh
 # Demo helpers land in /root/demo/ -- combined with WORKDIR /root/demo below,
 # users `./exec.sh` into the container, land directly inside this folder and
 # `ls` shows the 4 demo scripts immediately. Closes #70.
@@ -224,6 +227,10 @@ ARG BRIDGE_FILE="bridge.yaml"
 
 # Same script COPY split as the devel stage. Closes #70.
 COPY --chmod=0755 script/entrypoint.sh script/ros_entrypoint.sh /
+# Runtime starts FROM ${IMAGE} (fresh base, not FROM devel), so the
+# [logging] helper COPY from devel does not propagate — re-COPY here.
+# Refs base#368, base PR #372.
+COPY --chmod=0755 .base/script/docker/_entrypoint_logging.sh /usr/local/lib/base/_entrypoint_logging.sh
 COPY --chmod=0755 \
     script/ros1_server.sh script/ros1_client.sh \
     script/ros2_server.sh script/ros2_client.sh \

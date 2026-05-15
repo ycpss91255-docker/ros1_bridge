@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Tee container stdout/stderr to /var/log/ros1_bridge/<service>.log when
+# setup.conf [logging] local_path is set. Same source-line as
+# script/entrypoint.sh (the runtime stage ENTRYPOINT); ros_entrypoint.sh
+# is the devel stage ENTRYPOINT, so both paths must source the helper
+# for per-stage host log files to populate.
+# shellcheck source=/dev/null
+. /usr/local/lib/base/_entrypoint_logging.sh
+
 # `set +u` / `set -u` brackets isolate ROS's setup.bash chain (catkin
 # + ament profile.d entries dereference unbound vars like
 # ROS_MASTER_URI / AMENT_TRACE_SETUP_FILES) from our strict-mode
