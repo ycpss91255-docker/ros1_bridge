@@ -5,6 +5,27 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Migrated `main.yaml` dispatcher caller from 1D scalar-axis to
+  N-D `include`-shape matrix-mode** ([closes #108](https://github.com/ycpss91255-docker/ros1_bridge/issues/108);
+  consumes [base#344 BREAKING](https://github.com/ycpss91255-docker/base/issues/344)
+  shipped in [base v0.32.0](https://github.com/ycpss91255-docker/base/releases/tag/v0.32.0)).
+  `multi-distro-build-worker.yaml@v0.30.0` reference bumped to
+  `@v0.32.0`, and the legacy 1D inputs (`pr_distros` /
+  `tag_distros` / `distro_input_name`) are replaced with
+  `pr_matrix` / `tag_matrix` — full JSON `include`-shape arrays of
+  `{name, build_args}` entries. PR-time still builds humble only;
+  tag-time builds humble + jazzy. Per-shard GHCR tag shape
+  `ros1_bridge-humble` / `ros1_bridge-jazzy` is preserved because
+  the dispatcher still emits `<image_name>-<matrix.name>` and
+  `matrix.name` carries the distro string verbatim. `ci-summary`
+  aggregator job stays in this repo unchanged so the branch-
+  protection required-check name doesn't move. Local
+  `script/entrypoint.sh`'s `${USER:-root}` + `if [[ -f ... ]]`
+  guards (added in #107) can be simplified in a future PR now that
+  base#368 ships the helper at the stable in-image path
+  `/usr/local/lib/base/_entrypoint_logging.sh` — out of scope here.
+
 ### Added
 - **Adopted base v0.30.0 `[logging] local_path`** so demo / debug runs leave host-readable log files under `<repo>/logs/<service>.log` ([closes #101](https://github.com/ycpss91255-docker/ros1_bridge/issues/101); ships in [base v0.30.0](https://github.com/ycpss91255-docker/base/releases/tag/v0.30.0) via [base#328](https://github.com/ycpss91255-docker/base/issues/328) / [base PR #356](https://github.com/ycpss91255-docker/base/pull/356)). Three pieces wire up together:
   - `.base/` subtree bumped `v0.29.2 -> v0.30.0` (auto via `make upgrade`; brings the new `_entrypoint_logging.sh` helper + `setup.sh apply` mount / env / gitignore emit).
