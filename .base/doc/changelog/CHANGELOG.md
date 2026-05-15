@@ -7,6 +7,282 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.32.0] - 2026-05-15
+
+Stable v0.32.0 minor feature release, promoting v0.32.0-rc1 (#371)
+plus three logging-feature follow-up fixes:
+
+- **#368 / PR #372** — ship `_entrypoint_logging.sh` into every
+  downstream image at `/usr/local/lib/base/_entrypoint_logging.sh`
+  so the source-line works at build-time AND runtime in every
+  workspace layout.
+- **#364 / PR #373** — `init.sh` default-sources the helper from
+  the generated `script/entrypoint.sh`, closing the v0.30.0 2-knob
+  UX gap (set `local_path` is now the only step for new repos).
+- **#367 / PR #374** — `setup.sh` emits per-stage `LOG_FILE_PATH` +
+  volume mount on extends-based compose services so per-service
+  file naming (`runtime.log`, `builder.log`) materialises instead
+  of inheriting devel's `LOG_FILE_PATH=devel.log` through compose
+  `extends` merge.
+
+Bundled BREAKING from v0.32.0-rc1 (carried below): `#344` rewrite
+of `multi-distro-build-worker.yaml` from 1D scalar-axis to N-D
+`include`-shape matrix-mode. Callers using the dispatcher must
+migrate from `pr_distros` / `tag_distros` / `distro_input_name` /
+`extra_build_args` to `pr_matrix` / `tag_matrix` (full JSON
+`include`-shape arrays of `{name, build_args, ...}` entries). The
+3 caller migration tracking issues remain open (ros1_bridge#108,
+ros_distro#24, ros2_distro#23); ros1_bridge migration follows in
+this session as Phase 3 of the original #344 plan.
+
+External callers reusing `multi-distro-build-worker.yaml@vX.Y.Z`
+break — the `### Changed` entry under [v0.32.0-rc1] carries the
+full input migration table.
+
+### Fixed
+
+- `script/docker/setup.sh`: emit per-stage `LOG_FILE_PATH` env var
+  and `[logging] local_path` volume mount on extends-based compose
+  services (the zero-diff `extends: service: devel` branch from
+  #215, used by auto-emitted Dockerfile stages like `builder` /
+  `runtime` / `test-tools-stage`). Closes #367. The v0.30.0 emit
+  was three-point (devel inline / standalone auto-emitted stages
+  with overrides / test); the zero-diff extends path was missing,
+  so compose's `extends` merge inherited devel's
+  `LOG_FILE_PATH=/var/log/<repo>/devel.log` into every extending
+  service. `./run.sh -d runtime` ended up tee'ing the runtime
+  container's stdout to `logs/devel.log` instead of
+  `logs/runtime.log`. Result: per-service file naming
+  (`runtime.log`, `builder.log`, ...) silently never materialised;
+  users running multiple services concurrently got interleaved
+  content in `logs/devel.log`. Fix is Option A from #367: every
+  service block now emits its own `LOG_FILE_PATH` +
+  `<resolved>:/var/log/<repo>` volume mount uniformly when
+  `local_path` is set, regardless of whether the service uses
+  `extends`. compose's `environment:` list merge concatenates entries
+  and last-wins resolution at runtime picks the override; the
+  duplicate volume mount string against the inherited one is
+  harmless because compose dedups identical bind strings.
+  Back-compat: when `local_path` is unset the zero-diff emit stays
+  byte-for-byte identical to pre-#367, so repos that haven't opted
+  into `[logging] local_path` see zero change. 3 new tests in
+  `compose_logging_spec.bats` (extending stage LOG_FILE_PATH emit,
+  volume mount emit, and back-compat no-emit when local_path
+  unset).
+
+- `init.sh` now default-sources `_entrypoint_logging.sh` from the
+  stable in-image path `/usr/local/lib/base/_entrypoint_logging.sh`
+  in the generated `script/entrypoint.sh`, closing the v0.30.0
+  `[logging] local_path` UX gap (#364). Before this change, the
+  user-facing model was 2-knob: edit `setup.conf` AND hand-add a
+  source line to `entrypoint.sh`; out-of-the-box, setting `local_path`
+  emitted `LOG_FILE_PATH` env + the host volume mount in
+  `compose.yaml` but no file ever materialised because the helper
+  was never sourced. Default-sourcing is no-op safe
+  (`_entrypoint_logging.sh:51` early-returns when `LOG_FILE_PATH`
+  is unset), so stock repos see zero behavioural change. **New
+  repos** generated via `init.sh` from this version on get the
+  helper pre-wired — setting `[logging] local_path` is now the
+  only step. **Existing repos** need a one-time manual addition of
+  the source line before `exec` in `script/entrypoint.sh`;
+  `init.sh` / `upgrade.sh` deliberately do NOT modify existing
+  entrypoints to preserve downstream customisations (ROS sourcing,
+  conda activation, etc). The emitted source line uses the in-image
+  path shipped by #368 / PR #372 (no `$USER` deref, no workspace
+  bind-mount dependence), so it works at build-time AND runtime
+  across every workspace layout. README (en + 3 translations)
+  gains a "Logging output to host" section covering the 1-step
+  setup, the existing-repo migration line, and a `grep`
+  troubleshooting hint. `test/integration/init_new_repo_spec.bats`
+  gains one assertion verifying the freshly-generated entrypoint
+  contains the source line + explanatory comment, plus regression
+  guards against the broken v0.30.0 example (`${USER}` / `/home/`
+  must be absent). Closes #364.
+
+- `dockerfile/Dockerfile.example`, `script/docker/_entrypoint_logging.sh`,
+  `config/docker/setup.conf`: ship `_entrypoint_logging.sh` into every
+  downstream image at the stable in-image path
+  `/usr/local/lib/base/_entrypoint_logging.sh` so the documented
+  source-line works at build-time AND runtime in every workspace
+  layout (#368). The v0.30.0 example
+  `. /home/${USER}/work/.base/script/docker/_entrypoint_logging.sh`
+  had two failure modes that hit every adopter: (a) `$USER` is unset
+  in the Dockerfile test stage, so `set -u` entrypoints crashed
+  during build-time bats smoke (`USER: unbound variable`); (b) on
+  multi-repo workspace layouts (the org-wide norm), `WS_PATH` resolves
+  to the workspace parent rather than the repo root, so the bind mount
+  `<WS_PATH>:/home/<user>/work` places the repo's `.base/` at
+  `/home/<user>/work/<repo>/.base/`, not the documented
+  `/home/<user>/work/.base/` -- the helper silently never ran and
+  no host-side log file was ever produced. Path A fix: Dockerfile.example's
+  devel stage now COPYs `.base/script/docker/_entrypoint_logging.sh`
+  into `/usr/local/lib/base/_entrypoint_logging.sh`, the commented-out
+  runtime stage block carries a matching COPY example, and the helper
+  header + setup.conf `[logging]` comment block both document the
+  in-image source-line. Downstream entrypoints can adopt the helper
+  with a single un-guarded line:
+  ```
+  . /usr/local/lib/base/_entrypoint_logging.sh
+  ```
+  The line is safe to add unconditionally because the helper is a
+  no-op when `LOG_FILE_PATH` is unset; repos that haven't opted into
+  `[logging] local_path` stay unaffected. Existing downstream guards
+  (e.g. ros1_bridge#107's `if [[ -f ... ]]` + `${USER:-root}`) become
+  unnecessary and can be simplified in a follow-up PR. 5 new tests:
+  3 in `template_spec.bats` (Dockerfile.example devel COPY directive +
+  stage placement, commented runtime stage COPY example, helper header
+  positive + negative regression guards), 1 in `compose_logging_spec.bats`
+  (setup.conf `[logging]` comment block path reference + negative guard),
+  1 in `init_new_repo_spec.bats` (init.sh-generated Dockerfile contains
+  the helper COPY).
+
+## [v0.32.0-rc1] - 2026-05-15
+
+Release Candidate for v0.32.0 minor feature release. Bundles a
+single BREAKING change: **#344 multi-distro-build-worker N-D
+matrix-mode** (merged via #370). The dispatcher's 1D inputs
+(`pr_distros` / `tag_distros` / `distro_input_name` /
+`extra_build_args`) are removed; callers must use `pr_matrix` /
+`tag_matrix` (full JSON `include`-shape arrays of
+`{name, build_args, ...}` entries). Migration unlocks first-time
+adoption of the dispatcher by `env/ros_distro` / `env/ros2_distro`
+(which previously couldn't use it due to their 4-cell matrix's
+cross-axis correlations).
+
+External callers reusing `multi-distro-build-worker.yaml@vX.Y.Z`
+break — the `### Changed` entry below carries the full input
+migration table. Per-shard GHCR tag shape (`<image_name>-<cell-name>`)
+preserved, so registry artifacts produced by existing callers stay
+compatible after migration.
+
+RC validation strategy: three caller migration tracking issues
+filed against the affected repos (ros1_bridge#108, ros_distro#24,
+ros2_distro#23). Each tracking issue carries the exact diff for
+that repo's `main.yaml`. RC promotion to formal v0.32.0 happens
+after all three caller migration PRs land green against
+`@v0.32.0-rc1`.
+
+### Changed
+
+- **BREAKING** (#344) — `multi-distro-build-worker.yaml` dispatcher
+  rewritten from 1D scalar-axis to N-D `include`-shape matrix-mode.
+  Legacy inputs `pr_distros` / `tag_distros` / `distro_input_name` /
+  `extra_build_args` are removed; callers must use `pr_matrix` /
+  `tag_matrix` (full JSON arrays of `{name, build_args, ...}` entries).
+  Each cell's `name` field is REQUIRED and drives both the per-shard
+  `image_name` suffix (`<inputs.image_name>-<matrix.name>`, hyphen
+  per #339 v0.29.1 convention) and the buildx cache scope
+  (`cache_variant: ${{ matrix.name }}`, #272 contract). `build_args`
+  is forwarded verbatim — caller fully owns per-cell args. Motivation:
+  the 1D dispatcher cannot represent `env/ros_distro` /
+  `env/ros2_distro`'s 4-cell shape (strong cross-axis correlations
+  between distro/variant/registry/ubuntu suffix); switching to
+  GitHub matrix's native `include` form unlocks both env repos as
+  callers and any future N-axis case without dispatcher changes.
+
+  Migration table for the only existing 1D caller (`app/ros1_bridge`):
+
+  | Old (v0.29.x — v0.31.x) | New (v0.32.0+) |
+  |---|---|
+  | `pr_distros: '["humble"]'` | `pr_matrix: '[{"name":"humble","build_args":"ROS2_DISTRO=humble"}]'` |
+  | `tag_distros: '["humble", "jazzy"]'` | `tag_matrix: '[{"name":"humble","build_args":"ROS2_DISTRO=humble"},{"name":"jazzy","build_args":"ROS2_DISTRO=jazzy"}]'` |
+  | `distro_input_name: ROS2_DISTRO` | (removed — encoded per-cell in `build_args`) |
+  | `extra_build_args: ...` | (removed — append directly in each cell's `build_args` via multi-line) |
+
+  Per-shard GHCR tag shape unchanged (`<image_name>-<cell-name>`),
+  so registry artifacts produced by existing callers stay compatible
+  after migration. `ci-passed` rollup job unchanged — branch
+  protection contexts don't move. Existing inline-matrix callers
+  (`env/ros_distro` / `env/ros2_distro`) can now adopt the dispatcher
+  for the first time. Test spec
+  `multi_distro_build_worker_yaml_spec.bats` rewritten (14 → 16
+  tests; new negative assertion verifies the 1D inputs are gone).
+  Closes #344.
+
+## [v0.31.0] - 2026-05-15
+
+Promoted from `v0.31.0-rc1` (#363). RC tag CI green: `Self Test`
+(with `release` job) + `Release test-tools image to GHCR` both
+completed/success. RC validation on `env/ros_distro` (PR
+ycpss91255-docker/ros_distro#23, closed without merge per RC
+convention) confirmed the wrapper consolidation migration works
+across all 4 ROS 1 distro shards (kinetic-ros-base /
+kinetic-desktop-full / noetic-ros-base / noetic-desktop-full). One
+unrelated `-h` usage-string alignment fix (#366) landed between rc1
+and stable and is carried into v0.31.0; details in `### Fixed`
+below.
+
+Migration note for downstream consumers: Dockerfiles using
+`COPY *.sh /lint/` to lint the wrapper scripts must be updated to
+`COPY script/*.sh /lint/` after the v0.31.0 upgrade, because the
+wrapper layout no longer keeps `*.sh` at the repo root. The
+`/batch-template-upgrade v0.31.0` flow patches active downstream
+repos automatically via `.claude/scripts/fix-dockerfile-copy-script.sh`;
+external consumers must patch their Dockerfiles manually. Surfaced
+during RC validation on `env/ros_distro` (commit `32624a3` on the
+closed RC PR).
+
+### Fixed
+
+- `build.sh -h` / `run.sh -h` usage strings (all 4 languages — en /
+  zh-TW / zh-CN / ja) claimed pre-#88 "warn on drift" semantics that
+  were superseded by #88's auto-apply behavior (`build.sh:453-477` /
+  `run.sh:442-456` already call `setup.sh apply` automatically when
+  `setup.sh check-drift` reports drift). Help text now describes the
+  default as auto-regeneration of `.env` + `compose.yaml` when
+  `setup.conf` / Dockerfile stages / GPU / GUI / USER_UID change, and
+  clarifies that `-s` is for forcing a rerun (opens the TUI on an
+  interactive TTY, otherwise non-interactive apply). Two new smoke
+  tests in `test/smoke/script_help.bats` lock the new phrasing
+  (`auto-regenerate` present, `warn on drift` absent) for both
+  scripts. Closes #365.
+
+## [v0.31.0-rc1] - 2026-05-15
+
+Release Candidate for v0.31.0 minor feature release. Bundles a single
+breaking change: **#330 wrapper consolidation + Makefile UX overhaul**
+(merged via #359). The seven user-facing wrappers move from the
+downstream repo root into a `script/` subfolder; `Makefile` stays at
+the root as the elevated user-facing entry, rewritten as a 1:1
+forwarder with `--` separator for flags. Migration is automatic via
+`make -f Makefile.ci upgrade VERSION=v0.31.0-rc1` (or
+`./.base/upgrade.sh v0.31.0-rc1`) — `init.sh`'s `_create_symlinks`
+loop drops the seven legacy root symlinks and creates `script/<name>.sh`
+equivalents.
+
+External callers hardcoding `./build.sh` / `./run.sh` / etc. break —
+the `### Changed` section below carries the full migration table.
+
+RC validation strategy: `/batch-template-upgrade v0.31.0-rc1 --only
+env/ros_distro` opens a single downstream PR; manual verification on
+`env/ros_distro` confirms (a) old root symlinks gone, (b) `script/*.sh`
+present, (c) `./script/build.sh test` / `make build test` green, (d)
+`make build -- --no-cache test` flag forwarding works, (e) `make help`
+lists 10 targets without `test` / `runtime` / `run-detach`. RC promotion
+to formal v0.31.0 happens after ros_distro validation passes.
+
+### Changed
+
+- **BREAKING** (#330) — wrapper consolidation: the seven user-facing wrappers (`build.sh` / `run.sh` / `exec.sh` / `stop.sh` / `prune.sh` / `setup.sh` / `setup_tui.sh`) move from the downstream repo root into a `script/` subfolder. `Makefile` stays at the root as the elevated user-facing entry. `init.sh` produces the new layout on fresh repos and migrates existing repos automatically (the stale-root-removal loop in `_create_symlinks` drops the seven legacy root symlinks plus the pre-rename `tui.sh`). `upgrade.sh` calls `init.sh` after the subtree pull, so `make -f Makefile.ci upgrade VERSION=v0.31.0` (or `./.base/upgrade.sh v0.31.0`) is the one-shot migration trigger for downstream consumers. The Dockerfile-level `script/entrypoint.sh` already lived under `script/` and coexists with the new wrappers. External callers hardcoding `./build.sh` / `./run.sh` / etc. break — migration table below.
+
+- **BREAKING** (#330) — Makefile rewrite: the user-facing `.base/script/docker/Makefile` is rewritten to a 1:1 wrapper Makefile with positional-argument forwarding via `$(filter-out $@,$(MAKECMDGOALS))` and a `%:` catch-all rule. Net effect: `make build test` now forwards `test` to `./script/build.sh test` (positional sub-cmds align with `.sh` calling convention); flags require the `--` separator (`make build -- --no-cache test` -> `./script/build.sh --no-cache test`) because Make's argument parser consumes `-` / `--` tokens before `MAKECMDGOALS` is computed. The previously-existing sub-cmd targets `test` / `runtime` / `run-detach` are removed in favour of the positional forwarding pattern. Three new targets ship: `prune` / `setup` / `setup-tui`. `.DEFAULT_GOAL := help` flips the bare-`make` default from "build" to "print help" for better discoverability. `Makefile.ci` is unchanged — the user-facing vs CI-facing split is intentional and preserved (CI keeps using `make -f Makefile.ci test` / `lint` / `upgrade VERSION=vX.Y.Z`).
+
+  Migration table for external consumers:
+
+  | Old | New |
+  |---|---|
+  | `./build.sh` | `make build` (no args) or `./script/build.sh` |
+  | `./build.sh test` | `make build test` or `./script/build.sh test` |
+  | `./build.sh --no-cache test` | `make build -- --no-cache test` or `./script/build.sh --no-cache test` |
+  | `./run.sh -d` | `make run -- -d` or `./script/run.sh -d` |
+  | `./exec.sh -t bats-src bash` | `make exec -- -t bats-src bash` or `./script/exec.sh -t bats-src bash` |
+  | `make test` (removed) | `make build test` (positional forward to `./script/build.sh test`) |
+  | `make runtime` (removed) | `make build runtime` |
+  | `make run-detach` (removed) | `make run -- -d` |
+  | `make` (was: build) | `make` now prints help (`.DEFAULT_GOAL := help`); use `make build` to build |
+
+  New tests cover the 1:1 invocation, positional forwarding, `--` separator, `.DEFAULT_GOAL`, and catch-all behaviour (NEW `test/unit/makefile_user_spec.bats`, ~25 cases) plus the `script/` symlink layout + migration loop (`test/integration/init_new_repo_spec.bats` +3 cases, `test/unit/init_spec.bats` updates + 1 new migration case).
+
 ## [v0.30.0] - 2026-05-14
 
 Promoted from `v0.30.0-rc1` (#360). rc1 tag CI green: `Self Test` +

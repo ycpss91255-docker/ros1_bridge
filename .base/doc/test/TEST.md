@@ -1,6 +1,6 @@
 # TEST.md
 
-Template self-tests: **1336 tests** total (1275 unit + 61 integration).
+Template self-tests: **1372 tests** total (1308 unit + 64 integration).
 
 > Counted scope is the `make -f Makefile.ci test` self-test suite —
 > what runs in the `Self Test` CI job. The 36 shared smoke tests under
@@ -332,48 +332,57 @@ which would leave a freshly-pushed `:main` unverified).
 | Smoke step pulls trigger's tag via `steps.tags.outputs.smoke` (#317 P2) | 1 |
 | Build step pushes multi-arch (amd64 + arm64) + declares `packages: write` permission | 2 |
 
-### test/unit/multi_distro_build_worker_yaml_spec.bats (14)
+### test/unit/multi_distro_build_worker_yaml_spec.bats (16)
 
 Structural assertions for `.github/workflows/multi-distro-build-worker.yaml`
-(#325 B-1 dispatcher). The dispatcher fans a per-event distro
-subset across `build-worker.yaml` matrix shards so multi-distro
+(#325 B-1 dispatcher, extended to N-D matrix-mode via #344 in v0.32.0).
+The dispatcher fans a per-event `include`-shape matrix across
+`build-worker.yaml` matrix shards so multi-distro / multi-variant
 caller `main.yaml`s (`env/ros_distro`, `env/ros2_distro`,
 `app/ros1_bridge`) stop copy-pasting a
 `${{ github.event_name == 'pull_request' && ... || ... }}`
 expression. Three jobs:
 
-1. **`resolve-matrix`** — pure-shell selector emitting a `distros`
-   JSON-array output. `pull_request` -> `pr_distros` (subset);
-   anything else (tag push, main push, `workflow_dispatch`) ->
-   `tag_distros` (release validation matrix).
+1. **`resolve-matrix`** — pure-shell selector emitting a `matrix`
+   JSON-array output (`include`-shape, each entry has `name` +
+   `build_args` plus arbitrary additional fields). `pull_request` ->
+   `pr_matrix` (subset); anything else (tag push, main push,
+   `workflow_dispatch`) -> `tag_matrix` (release validation matrix).
 
 2. **`call-build`** — strategy.matrix job invoking the local
-   `build-worker.yaml` per distro shard. Derives per-shard
-   `image_name` as `<image_name>_<distro>`, passes
-   `<distro_input_name>=<distro>` as the first `build_args` line,
-   and shards buildx GHA cache by distro via
-   `cache_variant: ${{ matrix.distro }}` (reuses #272's per-variant
-   scope contract). `fail-fast: false` so one shard's failure
-   doesn't cancel siblings.
+   `build-worker.yaml` per matrix cell. Derives per-shard
+   `image_name` as `<image_name>-<matrix.name>`, forwards
+   `matrix.build_args` verbatim as `build_args`, and shards buildx
+   GHA cache by name via `cache_variant: ${{ matrix.name }}`
+   (reuses #272's per-variant scope contract). `fail-fast: false`
+   so one shard's failure doesn't cancel siblings.
 
 3. **`ci-passed`** — rollup gate for branch protection. Matches the
    existing `ci-passed` rollup naming used by env/ros_distro /
    env/ros2_distro per CLAUDE.md's status-check table, so
    downstream branch-protection contexts don't change on adoption.
 
+**BREAKING since v0.32.0 (#344)**: legacy 1D inputs `pr_distros` /
+`tag_distros` / `distro_input_name` / `extra_build_args` were removed;
+the 14 v0.29-era tests covering those inputs are replaced by 16 tests
+covering the new matrix-mode shape (incl. a negative assertion that
+the 1D inputs are gone).
+
 | Category | Tests |
 |----------|-------|
 | Declares `workflow_call` | 1 |
-| Required inputs: `pr_distros`, `tag_distros`, `distro_input_name`, `image_name` | 1 |
+| Required inputs: `pr_matrix`, `tag_matrix`, `image_name` | 1 |
+| Legacy 1D inputs gone (no `pr_distros` / `tag_distros` / `distro_input_name` / `extra_build_args`) | 1 |
+| `pr_matrix` description documents required `name` + `build_args` fields | 1 |
+| `tag_matrix` description documents required `name` + `build_args` fields | 1 |
 | Passthrough inputs mirror build-worker (build_runtime / test_tools_version / platforms / context_path / dockerfile_path / build_contexts) | 1 |
-| Defines `extra_build_args` passthrough | 1 |
-| `resolve-matrix` emits `distros` output | 1 |
+| `resolve-matrix` emits `matrix` output (include-shape) | 1 |
 | `resolve-matrix` branches on `github.event_name == 'pull_request'` | 1 |
 | `call-build` `uses: ./.github/workflows/build-worker.yaml` | 1 |
-| `call-build` matrix `fromJSON(needs.resolve-matrix.outputs.distros)` | 1 |
-| `call-build` per-shard `image_name: <image_name>_<distro>` | 1 |
-| `call-build` `build_args` line `<distro_input_name>=<distro>` | 1 |
-| `call-build` `cache_variant: ${{ matrix.distro }}` (per-distro cache scope) | 1 |
+| `call-build` matrix `include: fromJSON(needs.resolve-matrix.outputs.matrix)` | 1 |
+| `call-build` per-shard `image_name: <image_name>-<matrix.name>` (hyphen) | 1 |
+| `call-build` forwards `build_args: ${{ matrix.build_args }}` verbatim | 1 |
+| `call-build` `cache_variant: ${{ matrix.name }}` (per-cell cache scope) | 1 |
 | `call-build` `fail-fast: false` | 1 |
 | `ci-passed` rollup depends on `call-build`, runs with `if: always()` | 1 |
 | `ci-passed` declares `name: ci-passed` to satisfy branch protection contract | 1 |
@@ -512,6 +521,29 @@ exists alongside the wrapper symlink; the documented "cannot find _lib.sh"
 error path still fires (with the new `.base/...` path in the diagnostic)
 when neither `.base/` nor the sibling fallback is present.
 
+### test/unit/makefile_user_spec.bats (23)
+
+Unit tests for the user-facing `script/docker/Makefile` rewritten in #330.
+Each named wrapper target is a thin 1:1 forward to `./script/<name>.sh`
+with positional sub-cmd args carried via `$(filter-out $@,$(MAKECMDGOALS))`
+and flags requiring the `--` separator. A `%:` catch-all rule no-ops the
+forwarded positional tokens so Make does not error on `make build test`.
+`.DEFAULT_GOAL := help` flips the bare-`make` invocation from build to
+help. Sandbox copies the Makefile into a fake repo, planting stub
+`script/*.sh` recorders that log their argv into stdout so each test
+can assert exactly which underlying script ran and with what args.
+
+Covers: `.DEFAULT_GOAL` (bare `make` -> help, does not invoke wrappers);
+`make help` lists 10 user-facing targets; removed sub-cmd targets
+(`test` / `runtime` / `run-detach`) are absent from help; 1:1 invocation
+across all 10 targets (build / run / exec / stop / prune / setup /
+setup-tui / upgrade / upgrade-check / help); positional forwarding
+(`make build test`, `make build runtime`, `make upgrade v0.30.0`, `make
+setup foo`); `--` separator + flag forwarding (`make build -- --no-cache
+test`, `make run -- -d`, `make exec -- -t bats-src bash`); catch-all
+no-op (`make foo` succeeds silently, `make build foo bar` forwards
+multiple positional args).
+
 ### test/unit/compose_gen_spec.bats (50)
 
 Covers `generate_compose_yaml` conditional output: AUTO-GENERATED
@@ -549,7 +581,7 @@ conditional GPU deploy block + GUI env/volumes + extra volumes from
 | `environment env_N supports multiple cross-references in one value (refs #236)` | multi-ref |
 | `environment env_N transitive cross-reference resolves through chain (refs #236)` | transitive |
 
-### test/unit/compose_logging_spec.bats (25)
+### test/unit/compose_logging_spec.bats (29)
 
 Covers `[logging]` + `[logging.<svc>]` support in
 `generate_compose_yaml` (#310). Tests the global emission on every
@@ -585,6 +617,10 @@ behaviour, and the two new setup.sh helpers `_parse_logging_svc_sections`
 | `_sync_logging_local_paths_gitignore is idempotent (#328)` | Re-run no-op |
 | `_sync_logging_local_paths_gitignore collects from both global + per-svc (#328)` | Multi-source |
 | `_sync_logging_local_paths_gitignore is no-op when no local_path keys (#328)` | Empty no-op |
+| `setup.conf [logging] comment block references in-image helper path (/usr/local/lib/base/, #368)` | Documented adoption path matches in-image COPY |
+| `generate_compose_yaml emits per-stage LOG_FILE_PATH on extends:devel stage when [logging] local_path is set (#367)` | Per-svc LOG_FILE_PATH on auto-emitted extends-only stage |
+| `generate_compose_yaml emits per-stage volume mount on extends:devel stage when [logging] local_path is set (#367)` | Per-svc volume mount on auto-emitted extends-only stage |
+| `generate_compose_yaml does NOT emit LOG_FILE_PATH on extends:devel stage when [logging] local_path is unset (#367 back-compat)` | Zero-diff back-compat when feature unset |
 
 ### test/unit/entrypoint_logging_spec.bats (6)
 
@@ -605,7 +641,7 @@ the host file content and the inherited stdout (preserving
 | `entrypoint_logging warns + continues when target is a directory (#328)` | Failure-mode fallback |
 | `entrypoint_logging captures stderr along with stdout (#328)` | 2>&1 redirect |
 
-### test/unit/template_spec.bats (147)
+### test/unit/template_spec.bats (150)
 
 | Test | Description |
 |------|-------------|
@@ -735,6 +771,9 @@ the host file content and the inherited stdout (preserving
 | `run.sh contains xhost +local: for X11` | X11 xhost |
 | `setup.sh default _base_path uses /..` | Path resolution |
 | `setup.sh default _base_path uses double parent traversal` | Repo root traversal |
+| `Dockerfile.example copies _entrypoint_logging.sh to /usr/local/lib/base/ in devel stage (#368)` | In-image helper COPY + devel-stage placement |
+| `Dockerfile.example commented runtime stage shows _entrypoint_logging.sh COPY example (#368)` | Runtime opt-in scaffold |
+| `_entrypoint_logging.sh header documents in-image source-line (no $USER, no work/.base) (#368)` | Helper Usage docstring positive + negative regression guards |
 
 ### test/unit/bashrc_spec.bats (10)
 
@@ -778,7 +817,7 @@ the host file content and the inherited stdout (preserving
 | `main: dispatches no-flag default to the ci service` | End-to-end default dispatch |
 | `main: dispatches --coverage to the coverage service` | End-to-end --coverage dispatch |
 
-### test/unit/init_spec.bats (21)
+### test/unit/init_spec.bats (22)
 
 Unit coverage for `init.sh` helpers that previous rounds exercised only
 through the Level-1 integration test. Complements
@@ -799,8 +838,9 @@ are hard to trigger from a real `bash template/init.sh` invocation
 | `_create_new_repo: main.yaml falls back to @main when ref arg omitted` | Default ref |
 | `_create_new_repo: main.yaml falls back to @main when ref arg is empty` | Empty-string → `@main` |
 | `_create_new_repo: does NOT generate .env.example (image name via setup.conf)` | setup.conf rules drive IMAGE_NAME |
-| `_create_symlinks: produces all seven docker-script symlinks` | Symlink set |
-| `_create_symlinks: replaces a stale file at the symlink path` | Re-init over existing files |
+| `_create_symlinks: places 7 wrapper symlinks under script/, Makefile stays at root (#330)` | 7 wrappers under script/ with ../ targets; Makefile at root |
+| `_create_symlinks: replaces a stale file at the new symlink path under script/ (#330)` | Re-init over stale file at script/build.sh |
+| `_create_symlinks: removes stale root *.sh symlinks left by pre-#330 init (#330 migration loop)` | Migration: plant 7 root symlinks, re-run, all gone + script/ created |
 | `_create_symlinks: keeps custom .hadolint.yaml when it differs` | Custom-hadolint preservation |
 
 ### test/unit/smoke_helper_spec.bats (19)
@@ -970,7 +1010,7 @@ Unit tests for `template/script/docker/lib/gitignore.sh` — the canonical
 | `_untrack_canonical_in_repo: idempotent — second run succeeds without error` | Re-run safety |
 | `_untrack_canonical_in_repo: untracks all canonical entries that match` | Multi-entry sweep |
 
-### test/integration/init_new_repo_spec.bats (39)
+### test/integration/init_new_repo_spec.bats (42)
 
 End-to-end verification that `init.sh` produces a complete repo skeleton in
 an empty directory. **Level 1** (file generation only, no Docker). The
@@ -985,27 +1025,42 @@ which has access to a Docker daemon on the host runner.
 | `new repo: compose.yaml exists and references the repo name` | compose gen |
 | `new repo: .env.example is NOT generated (image name via setup.conf rules)` | setup.conf rules drive IMAGE_NAME |
 | `new repo: script/entrypoint.sh exists and is executable` | entrypoint gen |
+| `new repo: script/entrypoint.sh sources [logging] helper by default (refs #364)` | default in-image helper source line + comment present; ${USER} / /home/ absent (regression guards) |
 | `new repo: smoke test skeleton exists for the repo` | smoke skeleton |
 | `new repo: .github/workflows/main.yaml exists with reusable workflow ref` | CI gen |
+| `new repo: main.yaml grants permissions: contents: write` | #62 release perms |
 | `new repo: .gitignore exists` | gitignore |
 | `new repo: doc/ tree exists with README translations` | i18n docs |
 | `new repo: doc/test/TEST.md exists` | TEST.md gen |
 | `new repo: doc/changelog/CHANGELOG.md exists` | CHANGELOG gen |
-| `new repo: build.sh symlink → template/script/docker/build.sh` | symlink target |
-| `new repo: run.sh / exec.sh / stop.sh / Makefile symlinks correct` | symlink set |
-| `new repo: template/.version exists (no legacy VERSION / .template_version)` | version file |
+| `new repo: build.sh symlink lives under script/, not root (#330)` | symlink target moved to script/build.sh |
+| `new repo: 7 wrapper symlinks under script/, Makefile stays at root (#330)` | symlink set: 7 wrappers + Makefile root |
+| `new repo: config/ is an empty placeholder (template#254 layered override)` | config placeholder |
+| `new repo: init.sh preserves pre-existing config/ directory (no clobber)` | config preservation |
+| `new repo: init.sh drops stale config symlink before creating placeholder` | config-symlink drop |
+| `Dockerfile.example references CONFIG_SRC="config" (not .base/config)` | CONFIG_SRC default |
+| `Dockerfile.example has layered config COPY chain (template#254)` | layered COPY order |
+| `Dockerfile.example declares ENV HOME before WORKDIR ${HOME}/work (#334)` | HOME env directive |
+| `Dockerfile.example sets up bashrc.d drop-in directory (template#254)` | bashrc.d setup |
+| `new repo: Dockerfile contains _entrypoint_logging.sh in-image COPY (#368)` | End-to-end check on init.sh-generated repo |
+| `new repo: .base/.version exists (no legacy VERSION / .template_version)` | version file |
 | `new repo: re-running init.sh on the result is idempotent` | idempotent |
-| `new repo: init.sh creates setup_tui.sh symlink (not legacy tui.sh)` | post-rename symlink |
-| `new repo: init.sh removes stale tui.sh symlink from earlier versions` | upgrade cleanup |
-| `new repo: build.sh -h works against the generated symlink` | smoke build.sh |
-| `new repo: run.sh -h works against the generated symlink` | smoke run.sh |
-| `new repo: exec.sh -h works against the generated symlink` | smoke exec.sh |
-| `new repo: stop.sh -h works against the generated symlink` | smoke stop.sh |
+| `new repo: init.sh creates setup_tui.sh symlink under script/ (not legacy tui.sh)` | setup_tui under script/ |
+| `new repo: init.sh removes stale tui.sh symlink from earlier versions (#330 stale-removal loop)` | upgrade cleanup |
+| `new repo: init.sh removes stale root *.sh symlinks (#330 migration)` | migrate 7 root symlinks to script/ |
+| `new repo: build.sh -h works against the generated symlink` | smoke script/build.sh |
+| `new repo: run.sh -h works against the generated symlink` | smoke script/run.sh |
+| `new repo: exec.sh -h works against the generated symlink` | smoke script/exec.sh |
+| `new repo: stop.sh -h works against the generated symlink` | smoke script/stop.sh |
+| `new repo: setup.sh symlink under script/ → ../.base/script/docker/setup.sh` | setup.sh under script/ |
+| `new repo: setup.sh -h works against the generated symlink` | smoke script/setup.sh |
 | `init.sh --gen-conf copies setup.conf to repo root` | setup.conf gen |
 | `init.sh --gen-conf refuses to overwrite existing setup.conf` | overwrite safety |
 | `new repo: .gitignore contains compose.yaml (derived artifact)` | gitignore compose.yaml |
 | `new repo: .gitignore contains .env (derived artifact)` | gitignore .env |
 | `new repo: compose.yaml has AUTO-GENERATED header (produced by setup.sh)` | setup.sh generated compose.yaml |
+| `new repo: compose.yaml ships devices: /dev:/dev by default` | default device mount |
+| `new repo: setup.conf mount_1 is NOT empty after first init` | workspace writeback non-empty |
 | `new repo: per-repo setup.conf auto-created on first init (workspace writeback)` | #201 — bootstrap writes WS_PATH back |
 
 ### test/integration/fresh_clone_portability_spec.bats (2)
@@ -1118,7 +1173,7 @@ so the shared specs and any per-repo `test/smoke/` overlay execute
 together. `display_env.bats` self-skips on headless repos by detecting
 the absence of GUI lines in the generated `compose.yaml`.
 
-### test/smoke/script_help.bats (25)
+### test/smoke/script_help.bats (27)
 
 Locks the `-h` / `--help` invariants on the four wrapper scripts
 (`build.sh` / `run.sh` / `exec.sh` / `stop.sh`) plus the `_LANG`
@@ -1133,9 +1188,11 @@ usage, not English).
 | `build.sh -h exits 0` | Wrapper smoke |
 | `build.sh --help exits 0` | Long flag |
 | `build.sh -h prints usage` | Output sanity |
+| `build.sh -h describes auto-apply default (no stale 'warn on drift', #365)` | Help text describes auto-apply, not stale warn-on-drift |
 | `run.sh -h exits 0` | Wrapper smoke |
 | `run.sh --help exits 0` | Long flag |
 | `run.sh -h prints usage` | Output sanity |
+| `run.sh -h describes auto-apply default (no stale 'warn on drift', #365)` | Help text describes auto-apply, not stale warn-on-drift |
 | `exec.sh -h exits 0` | Wrapper smoke |
 | `exec.sh --help exits 0` | Long flag |
 | `exec.sh -h prints usage` | Output sanity |
