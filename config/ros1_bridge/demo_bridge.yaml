@@ -1,9 +1,0 @@
-# Demo bridge config — std_msgs/String, both directions.
-# Used by script/ros{1,2}_server.sh via parameter_bridge.
-topics:
-  - topic: /chatter_1to2
-    type: std_msgs/msg/String
-    queue_size: 10
-  - topic: /chatter_2to1
-    type: std_msgs/msg/String
-    queue_size: 10
