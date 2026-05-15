@@ -75,6 +75,6 @@ jobs:
       fail-fast: false
       matrix:
         ros2_distro: [humble, jazzy]
-    uses: ycpss91255-docker/base/.github/workflows/release-worker.yaml@v0.30.0
+    uses: ycpss91255-docker/base/.github/workflows/release-worker.yaml@v0.32.0
     with:
       archive_name_prefix: ros1_bridge-${{ matrix.ros2_distro }}
