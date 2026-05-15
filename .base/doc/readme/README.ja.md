@@ -64,7 +64,7 @@ graph TB
     end
 
     subgraph consumer["Docker Repo（例: my_app）"]
-        symlinks["build.sh → .base/script/docker/build.sh<br/>run.sh → .base/script/docker/run.sh<br/>exec.sh / stop.sh / .hadolint.yaml"]
+        symlinks["Makefile → .base/script/docker/Makefile<br/>script/build.sh → ../.base/script/docker/build.sh<br/>script/run.sh / exec.sh / stop.sh / prune.sh / setup.sh / setup_tui.sh<br/>.hadolint.yaml"]
         dockerfile["Dockerfile<br/>compose.yaml<br/>.env.example<br/>script/entrypoint.sh"]
         repo_test["test/smoke/<br/>app_env.bats（repo 固有）"]
         main_yaml["main.yaml<br/>→ 再利用可能な workflows を呼び出し"]
@@ -81,8 +81,8 @@ graph TB
 ```mermaid
 flowchart LR
     subgraph local["ローカル"]
-        build_test["./build.sh test"]
-        make_test["make test"]
+        build_test["./script/build.sh test"]
+        make_test["make build test"]
     end
 
     subgraph ci_container["CI コンテナ（kcov/kcov）"]
@@ -126,8 +126,8 @@ flowchart LR
 | `test/unit/` | Template 自身のテスト（bats + kcov） |
 | `test/integration/` | Level-1 `init.sh` 統合テスト |
 | `.hadolint.yaml` | 共有 Hadolint ルール |
-| `Makefile` | Repo コマンドエントリ（`make build`、`make run`、`make stop` 等） |
-| `Makefile.ci` | Template CI コマンドエントリ（`make test`、`make lint` 等） |
+| `Makefile` | Repo コマンドエントリ（`make build`、`make run`、`make stop` 等）。Sub-cmd は位置引数として直接渡し（`make build test`）；flag には `--` セパレータが必要（`make build -- --no-cache test`）。`make` 単独で help を表示（`.DEFAULT_GOAL := help`）。 |
+| `Makefile.ci` | Template CI コマンドエントリ（`make -f Makefile.ci test`、`make -f Makefile.ci lint` 等）。user-facing と CI-facing の分離は意図的。 |
 | `init.sh` | 初回 symlink セットアップ + 新 repo スケルトン生成 |
 | `upgrade.sh` | Subtree バージョンアップグレード |
 | `script/ci/ci.sh` | CI パイプライン（ローカル + リモート） |
@@ -183,10 +183,15 @@ ENTRYPOINT ["/isaac-sim/runapp.sh"]
 ```
 
 ```bash
-./build.sh                    # compose.yaml を再生成、全 stage を build
-./run.sh -t headless          # headless バリアントを起動
-./run.sh -t gui               # gui バリアントを起動
-./exec.sh -t headless bash    # running の headless container に exec
+make build                            # compose.yaml を再生成、全 stage を build
+make run -- -t headless               # headless バリアントを起動
+make run -- -t gui                    # gui バリアントを起動
+make exec -- -t headless bash         # running の headless container に exec
+
+# 等価な直接 .sh 呼び出し:
+./script/build.sh
+./script/run.sh -t headless
+./script/exec.sh -t headless bash
 ```
 
 制約：
@@ -334,6 +339,43 @@ template ファイルが repo にコピーされ、検出された workspace が
 ./.base/init.sh --gen-conf # .base/setup.conf を repo ルートに単純コピー
 ```
 
+### ホスト側へのログ出力
+
+`[logging] local_path` を設定するとコンテナの stdout/stderr が
+ホスト側のファイルに tee 出力されます。docker daemon の json-file
+ログは並行して保持されます：
+
+```ini
+[logging]
+local_path = ./logs/   # repo 相対、または /abs/、~/dir/ も可
+```
+
+任意の wrapper を再実行すると `compose.yaml` が再生成されます。
+ホスト側のファイルは `<local_path>/<svc>.log`（サービスごと）に
+出力されます。`docker logs <ct>` の動作は変わりません（json-file
+はローリング履歴を維持、ホストファイルは今回の実行分を映します）。
+
+**新規 repo**：本バージョン以降の `init.sh` で生成された
+`script/entrypoint.sh` には helper の source 行が事前に組み込まれて
+います。`[logging] local_path` を設定するだけで動作します。
+**既存 repo**：`script/entrypoint.sh` の最後の `exec` の手前に
+次の 1 行を追加して一度だけ移行してください：
+
+```bash
+. /usr/local/lib/base/_entrypoint_logging.sh
+```
+
+Helper は `Dockerfile.example` の devel stage によりイメージ内の
+安定パス `/usr/local/lib/base/_entrypoint_logging.sh` にコピーされて
+います（refs #368）。そのため、この source 行は build-time / runtime
+どちらでも、どんな workspace 構成でも動作します — `$USER` 参照や
+workspace bind mount への依存はありません。
+
+トラブルシューティング：`local_path` を設定したのにホスト側
+ファイルが空のまま → `script/entrypoint.sh` に source 行が
+含まれているか確認してください
+（`grep _entrypoint_logging script/entrypoint.sh`）。
+
 ### インタラクティブ TUI
 
 `./setup_tui.sh` はメインメニューを開きます。バックエンドは
@@ -386,9 +428,9 @@ Main
 > で実行したい場合は `--build` フラグを付けてください：
 >
 > ```bash
-> ./build.sh test           # 明示的に lint + smoke を実行
-> ./run.sh --build          # lint + smoke を実行してから compose up
-> ./run.sh                  # デフォルト — 高速パス、lint/smoke はスキップ
+> make build test                   # 明示的に lint + smoke を実行
+> make run -- --build               # lint + smoke を実行してから compose up
+> make run                          # デフォルト — 高速パス、lint/smoke はスキップ
 > ```
 
 `setup.sh apply` は毎回 `compose.yaml` をゼロから書き直しますが、
