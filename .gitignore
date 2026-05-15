@@ -19,3 +19,6 @@ setup.conf.bak
 setup.conf.local
 
 .docker.xauth
+
+# managed by template: [logging] local_path (do not remove)
+/logs/
