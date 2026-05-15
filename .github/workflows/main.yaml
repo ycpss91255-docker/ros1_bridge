@@ -36,12 +36,15 @@ jobs:
     # symlink in the context, exercising the Dockerfile-internal
     # fallback to `config/demo_bridge.yaml` (closes #65). This keeps
     # the fallback path under continuous regression coverage.
-    uses: ycpss91255-docker/base/.github/workflows/multi-distro-build-worker.yaml@v0.30.0
+    uses: ycpss91255-docker/base/.github/workflows/multi-distro-build-worker.yaml@v0.32.0
     with:
       image_name: ros1_bridge
-      pr_distros: '["humble"]'
-      tag_distros: '["humble", "jazzy"]'
-      distro_input_name: ROS2_DISTRO
+      pr_matrix: '[{"name":"humble","build_args":"ROS2_DISTRO=humble"}]'
+      tag_matrix: |
+        [
+          {"name": "humble", "build_args": "ROS2_DISTRO=humble"},
+          {"name": "jazzy",  "build_args": "ROS2_DISTRO=jazzy"}
+        ]
       build_runtime: true
       platforms: linux/amd64,linux/arm64
       test_tools_version: v0.29.1
