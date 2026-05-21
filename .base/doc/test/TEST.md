@@ -1,6 +1,6 @@
 # TEST.md
 
-Template self-tests: **1372 tests** total (1308 unit + 64 integration).
+Template self-tests: **1416 tests** total (1352 unit + 64 integration).
 
 > Counted scope is the `make -f Makefile.ci test` self-test suite —
 > what runs in the `Self Test` CI job. The 36 shared smoke tests under
@@ -187,17 +187,18 @@ target areas the issue body called out.
 | Menu restructure #221 (i18n keys for main.runtime/mounts/features × 4 langs; `_render_runtime_menu` / `_render_mounts_menu` / `_render_features_menu` function existence; main-menu dispatch for image/build/runtime/mounts/features + bare network/deploy/gui/volumes/environment no longer dispatch from main; Runtime sub-menu dispatch for network/deploy/gui/environment + __back/Cancel; Mounts sub-menu dispatch for volumes/devices/tmpfs + __back/Cancel; Features sub-menu __back, per_stage enabled enters editor, per_stage hidden shows msgbox without entering editor; Advanced sub-menu image/build/devices/tmpfs entries removed, security still dispatches) | 31 |
 | #328 logging menu dispatch (Runtime menu's `logging` entry calls `_edit_section_logging`; `_edit_section_logging`'s top-level menu routes `global` to `_edit_logging_keys logging` and `devel` / `test` / `runtime` to `_edit_logging_keys logging.<svc>`) | 5 |
 
-### test/unit/build_worker_yaml_spec.bats (32)
+### test/unit/build_worker_yaml_spec.bats (33)
 
 Structural assertions for `.github/workflows/build-worker.yaml` (#195
-+ #243 + #272 + #273). Reusable workflows are not exec'd by these tests; instead
-grep patterns lock the YAML invariants — `context_path` /
-`dockerfile_path` inputs declared with the right defaults, all 4
-`docker/build-push-action` steps (devel-test / devel / runtime-test /
-runtime after #243) forwarding those inputs, no leftover
-`context: .` / `file: ./Dockerfile` literals, the GHA-cache
-plumbing (#272: `cache_variant` input, `Compute cache scope` step,
-`cache-from` / `cache-to` on all 4 build steps), and the #273
++ #243 + #272 + #273 + #378 b1). Reusable workflows are not exec'd by
+these tests; instead grep patterns lock the YAML invariants —
+`context_path` / `dockerfile_path` inputs declared with the right
+defaults, all 4 `docker/build-push-action` steps (devel-test / devel /
+runtime-test / runtime after #243) forwarding those inputs, no
+leftover `context: .` / `file: ./Dockerfile` literals, the GHA-cache
+plumbing (#272: `cache_variant` input, `Compute cache scope` step;
+#378 b1: per-target scope suffix so a late-stage COPY change in one
+target no longer cascades into siblings' manifests), and the #273
 doc-only PR fast-pass (`path-filter` job; Phase 2 classifier is pure
 shell via `git diff --name-only base...head` + `case` glob, no
 `dorny/paths-filter` dependency; 6-path allowlist; compute-matrix +
@@ -216,13 +217,13 @@ on doc-only PRs).
 | User build-args use long form matching Dockerfile.example sys stage (#198: USER_NAME / USER_GROUP / USER_UID / USER_GID across 4 build steps + no short-form regression) | 5 |
 | `build_contexts` input forwards to docker/build-push-action `build-contexts:` (#207: input declared with empty default, 4 build steps forward, default preserves zero-diff) | 3 |
 | #243 stage rename + runtime-test smoke: `target: devel-test` (renamed from `test`), no leftover `target: test`, `target: runtime-test` exists, runtime-test gated on `inputs.build_runtime` (>=2 occurrences shared with runtime gate) | 4 |
-| #272 GHA buildx cache: `cache_variant` input declared with empty default, `Compute cache scope` step emits `id: cache` + scope key into `GITHUB_OUTPUT`, 4 build steps set `cache-from: type=gha,scope=...`, 4 build steps set `cache-to: ...,mode=max`, default preserves zero-diff for single-call callers | 5 |
+| #272 + #378 b1 GHA buildx cache: `cache_variant` input declared with empty default, `Compute cache scope` step emits `id: cache` + base key (no `-cache` suffix; per-target suffix appended at use site), 4 build steps use per-target `<base>-<target>-cache` scopes (cache-from + cache-to per target), no legacy shared-scope leftover (negative regression), 4 build steps preserve `mode=max`, default preserves zero-diff for single-call callers | 6 |
 | #273 doc-only PR fast-pass (Phase 1 + Phase 2 shell rewrite): `path-filter` job declared, classifier is pure shell (`git diff --name-only base...head` + `case` glob; no `dorny/paths-filter` dependency), reads EVENT_NAME / BASE_SHA / HEAD_SHA from env: keys so the case body stays portable, non-PR event short-circuits before git diff (BASE_SHA / HEAD_SHA empty on push / tag / workflow_dispatch), 6-path allowlist (`**/*.md`, `doc/**`, `LICENSE`, `.gitignore`, `.github/CODEOWNERS`, `.github/dependabot.yml`) in a single `case` arm, `compute-matrix` + `build` jobs gated on `code_changed == 'true'` (2 occurrences), `docker-build` aggregator handles `code_changed == 'false'` short-circuit + `needs: [path-filter, build]`, non-PR triggers always set `code_changed=true` | 8 |
 
-### test/unit/self_test_yaml_spec.bats (26)
+### test/unit/self_test_yaml_spec.bats (52)
 
 Structural assertions for `.github/workflows/self-test.yaml`. Locks
-five cumulative invariants:
+eight cumulative invariants:
 
 1. **#305 actionlint gate** — `actionlint` job declared, runs
    `rhysd/actionlint` via Docker pinned to an explicit version
@@ -285,22 +286,85 @@ five cumulative invariants:
    compose service exercises end-to-end, so they must invalidate
    the behavioural-skip optimization.
 
+6. **#337 `ci-rollup` aggregator** — a single always-running
+   (`if: always()`) `ci-rollup` job sits downstream of every PR
+   check and collapses their results into one pass/fail signal that
+   branch protection can require. The verifier shell step consumes
+   every `${{ needs.<job>.result }}` and applies a 2-tier rule:
+   `actionlint` / `classify` / `test` must be `success`;
+   conditionally-gated jobs (`shellcheck` / `hadolint` /
+   `integration-e2e` / `behavioural`) may be `success` or `skipped`
+   (their job-level `if:` legitimately skips on doc-only / non-
+   behavioural PRs per #317 P1/P3, #376). Adding sub-jobs (#377)
+   to the rollup's `needs:` list becomes a workflow-internal
+   change with no branch-protection update required.
+
+7. **#376 ShellCheck + Hadolint dedicated jobs** — `shellcheck` runs
+   on plain ubuntu-latest with the pre-installed binary (no buildx,
+   no test-tools image, ~30s feedback on a regression) via
+   `ci.sh --shellcheck-only`. `hadolint` uses
+   `hadolint/hadolint-action@v3.1.0` to lint
+   `dockerfile/Dockerfile.example` + `dockerfile/Dockerfile.test-tools`
+   (both template-owned; downstream Dockerfile.example consumers
+   inherit the lint pass). Both gate on
+   `needs.classify.outputs.code_changed == 'true'` so doc-only PRs
+   SKIP them. Both join `ci-rollup`'s `needs:` list, and `release`
+   also gates on them so a tag with a lint regression doesn't publish
+   a Release.
+
+8. **#377 Bats unit/integration split + Kcov coverage move** — the
+   pre-#377 monolithic `test` job is fully removed and replaced by
+   three sibling jobs:
+   - `bats-unit` (matrix `shard: ['1/2', '2/2']`, `fail-fast: false`):
+     each shard runs a round-robin partition of `test/unit/*_spec.bats`
+     via `ci.sh --bats-unit-shard ${{ matrix.shard }}`. Parallel
+     execution drops PR wall-time from ~5min to ~2min.
+   - `bats-integration`: runs `test/integration/` via
+     `ci.sh --bats-integration`. Pulled out of the unit serial path
+     so each unit shard sees only its share.
+   - `coverage`: `if: github.event_name == 'push' && github.ref ==
+     'refs/heads/main'` — gated to main pushes only. Runs
+     `ci.sh --coverage` (full kcov pipeline) and uploads to Codecov.
+     **NOT in `ci-rollup`'s `needs:`** — coverage failure must not
+     block PR merge. PR-side coverage delta still works because
+     Codecov compares the PR head against the latest main coverage
+     blob.
+
+   `ci-rollup needs:` now `[actionlint, classify, shellcheck,
+   hadolint, bats-unit, bats-integration, integration-e2e,
+   behavioural]` (8 jobs) — every PR-check job. `release needs:`
+   updates from `[shellcheck, hadolint, test, integration-e2e,
+   behavioural]` → `[shellcheck, hadolint, bats-unit, bats-integration,
+   integration-e2e, behavioural]`. Post-#377 only `actionlint` +
+   `classify` are hard-mandatory in `ci-rollup`'s verifier (the
+   always-running `test` job no longer exists).
+
 | Category | Tests |
 |----------|-------|
 | `actionlint` job declared | 1 |
 | `actionlint` step uses `rhysd/actionlint:<pinned-version>` Docker image | 1 |
 | `classify` job declared with `code_changed` + `behavioural_relevant` outputs | 3 |
 | `classify` doc-only allow-list + behavioural block-list + non-PR default | 3 |
-| `test`/`integration-e2e`/`behavioural` declare `needs: [actionlint, classify]` | 3 |
-| `test` doc-only short-circuit + real-step `code_changed == 'true'` gate | 2 |
+| `bats-unit`/`bats-integration`/`integration-e2e`/`behavioural` declare `needs: [actionlint, classify]` | 4 |
+| `bats-unit`/`bats-integration` job-level `if: code_changed == 'true'` + no remaining monolithic `test:` job (#377) | 3 |
 | `integration-e2e` job-level `if: code_changed == 'true'` + `behavioural` job-level `if: behavioural_relevant == 'true'` (#317 P3 tightens) | 2 |
-| `test` + `behavioural` use `docker/build-push-action@v6` with `scope=test-tools` GHA cache | 2 |
+| `bats-unit`/`bats-integration`/`behavioural` use `docker/build-push-action@v6` with `scope=test-tools` GHA cache | 3 |
 | `classify` fail-open (`set -uo pipefail`) + pre-fetch base ref (#317 gotcha-1/2) | 2 |
-| `test` Obtain step pulls `:main` with 3-layer fallback + Build step gated on `build_local` (#317 P2) | 2 |
+| `bats-unit` Obtain step pulls `:main` with 3-layer fallback + Build step gated on `build_local` (#317 P2 + #377) | 2 |
+| `bats-integration` Obtain step + 3-layer fallback (#317 P2 + #377) | 1 |
 | `integration-e2e` Obtain step + `TEST_TOOLS_IMAGE` env passthrough + no `driver: docker` pin (#317 P2) | 2 |
 | `behavioural` Obtain step with 3-layer fallback (#317 P2) | 1 |
-| Obtain steps pre-fetch base ref (4 occurrences: classify + 3 jobs, #317 P2 reuses P1 gotcha-2 fix) | 1 |
+| Obtain steps pre-fetch base ref (5 occurrences post-#377: classify + 4 jobs, #317 P2 reuses P1 gotcha-2 fix) | 1 |
 | `classify` behavioural block-list extends to `setup.sh` + `i18n.sh` + `lib/**` + `prune.sh` (#317 P3 gotcha-5) | 1 |
+| `ci-rollup` declared + `needs: [actionlint, classify, shellcheck, hadolint, bats-unit, bats-integration, integration-e2e, behavioural]` + `if: always()` (#337 + #376 + #377) | 3 |
+| `ci-rollup` does NOT need `coverage` (#377) | 1 |
+| `ci-rollup` verify step consumes every `needs.<job>.result` + SKIPPED treated as pass for conditional jobs + `success` required for hard-mandatory jobs (#337 + #376 + #377) | 3 |
+| `shellcheck` job declared + `needs: [actionlint, classify]` + `if: code_changed == 'true'` + runs `ci.sh --shellcheck-only` on plain ubuntu-latest with no buildx (#376) | 3 |
+| `hadolint` job declared + `needs: [actionlint, classify]` + `if: code_changed == 'true'` + lints both template-owned Dockerfiles via `hadolint-action` (#376) | 3 |
+| `bats-unit` declared + `strategy.matrix.shard: ['1/2', '2/2']` + `fail-fast: false` + invokes `ci.sh --bats-unit-shard ${{ matrix.shard }}` (#377) | 3 |
+| `bats-integration` declared + invokes `ci.sh --bats-integration` (#377) | 2 |
+| `coverage` declared + `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` + runs `ci.sh --coverage` + uploads Codecov (#377) | 3 |
+| `release` job needs `[shellcheck, hadolint, bats-unit, bats-integration, integration-e2e, behavioural]` before publishing a tag (#376 + #377) | 1 |
 
 ### test/unit/release_test_tools_yaml_spec.bats (10)
 
@@ -415,7 +479,31 @@ mention), and **`-v` / `--verbose` / `-vv` / `--very-verbose` flag**
 step output is visible; `-vv` adds `set -x` on the wrapper itself;
 usage help mentions all four spellings).
 
-### test/unit/run_sh_spec.bats (50)
+### test/unit/build_sh_prune_spec.bats (7)
+
+Unit tests for `build.sh`'s #387 post-build prune-predecessor logic.
+Separate spec so the docker stub can be tailored to image-inspect /
+images-filter / rmi semantics without bloating the default
+build_sh_spec stub (which only logs argv). Smart docker stub branches
+on `image inspect` (returns `DOCKER_INSPECT_PRE_ID` on the first call,
+`DOCKER_INSPECT_POST_ID` on the second — defaults to PRE_ID for the
+cache-hit case), `images --filter reference=<id>` (emits the
+`<none>:<none>` self-entry plus `DOCKER_IMAGES_OUTPUT` lines so the
+multi-tag-still-references case can be simulated), and `rmi` (appends
+the id to `DOCKER_RMI_LOG` so tests assert presence/absence).
+
+Covers: first-build path (`docker image inspect` exits 1 → no
+`_pre_build_id` → prune skipped, no rmi), cache-hit rebuild
+(`pre == post` → cache-hit guard returns early), successful displaced
+rebuild (`pre != post`, old id has no other tag → `docker rmi
+<old-id>` fires), multi-tag guard (old id still referenced elsewhere
+→ "skip prune: predecessor still tagged" log + no rmi), `--no-prune`
+opt-out (no inspect calls + no rmi even when ids would have moved),
+`--dry-run` (planned-action line `[dry-run] docker rmi <old-id-of ...
+if displaced>` visible + zero real rmi), and `--help` mentions the
+`--no-prune` flag.
+
+### test/unit/run_sh_spec.bats (54)
 
 Unit tests for `run.sh`. Mirrors the build_sh_spec.bats harness;
 `docker ps` reads from a controllable stub file so tests can simulate
@@ -436,9 +524,13 @@ before compose up, `--build` after check-drift), and **`-C` / `--chdir`
 flag** (docker_harness#53: redirect FILE_PATH, short + long form,
 value-required and directory guards, usage help mention), and **`-v`
 / `--verbose` / `-vv` / `--very-verbose` flag** (#311: same export +
-trace pattern as build.sh, parity across wrappers).
+trace pattern as build.sh, parity across wrappers), and **#386
+foreground exit auto compose-down** (default-on for devel + one-shot
+non-devel targets, `--no-rm` opts out, `-d` suppresses the trap; the
+trap fires `down --remove-orphans` to mirror stop.sh and close the
+worktree-removed-before-stop network leak).
 
-### test/unit/exec_sh_spec.bats (36)
+### test/unit/exec_sh_spec.bats (53)
 
 Unit tests for `exec.sh` argument parsing, the container-running
 precheck, and i18n. Sandbox tree mirrors build_sh_spec.bats;
@@ -456,13 +548,21 @@ standalone `--` consumed before CMD flows through to `docker compose
 exec`, lets a dash-leading CMD pass through, works after `-t TARGET`
 for run.sh parity, no-`--` positional path stays backward-compatible,
 `-h` usage mentions `--`), fallback `_detect_lang` branches when
-`template/` is absent, and **`-C` / `--chdir` flag**
+`template/` is absent, **`-C` / `--chdir` flag**
 (docker_harness#53: redirect FILE_PATH so .env / project name come
 from the alt repo, short + long form, value-required and directory
-guards, usage help mention), and **`-v` / `--verbose` / `-vv` /
+guards, usage help mention), **`-v` / `--verbose` / `-vv` /
 `--very-verbose` flag** (#311: symmetry-only for exec since
 `docker exec` itself does not build, but flag is accepted and `-vv`
-enables wrapper trace).
+enables wrapper trace), and **`-T` / `--no-tty` + `-i` / `--tty`
+TTY-mode flags + auto-detect of `bash|sh|dash|zsh|ash|ksh -c '...'`**
+(#382 Option 1+2: 17 assertions covering the no-CMD default (TTY),
+interactive binary default (TTY), 4 shell flavours with `-c` auto-add
+`-T`, `bash hello.sh` (no `-c`) keeps TTY, explicit `-T`/`--no-tty`
+forces no-TTY, explicit `-i`/`--tty` overrides heuristic, last-wins
+precedence between `-T` and `-i` in both orders, `-T` + `-t TARGET`
+attaches to the right service, `-T` + `--` separator round-trip,
+`--help` mentions both flag pairs).
 
 ### test/unit/stop_sh_spec.bats (34)
 
@@ -488,7 +588,7 @@ down — `docker network prune --filter until=10m` + `docker image prune
 found; usage help mentions `--prune` with the two grace windows; the
 plain `stop.sh --dry-run` path emits no `docker prune` commands).
 
-### test/unit/prune_sh_spec.bats (23)
+### test/unit/prune_sh_spec.bats (36)
 
 Unit tests for the new `script/docker/prune.sh` wrapper (#319) — atomic
 docker garbage cleanup with conservative per-target `--filter until=`
@@ -507,7 +607,19 @@ across all selected targets, **volume confirmation prompt** (`n`
 aborts with exit-1 + i18n "aborted" message; `-y` skips the prompt;
 zh-TW prompt body asserts), `-C` / `--chdir` parity (accepted but
 no-op for daemon-wide prune; value-required + directory guards),
-usage help mentions every flag family.
+usage help mentions every flag family, and **#388 `--worktree-orphans`
+mode** (13 cases): per-test smart docker stub keyed on
+`DOCKER_IMAGES_OUTPUT` / `DOCKER_RMI_LOG` mocks `docker images` + `rmi`;
+fixtures construct real `<workspace>/worktree/<name>/` dirs so the
+existence check has something to consult. Cases cover empty-list
+no-op, owner-match + missing worktree → rmi, owner-match + worktree
+alive → keep, main-checkout pattern (no hyphen) → keep, **two safety
+gates**: bare-name image → skip ("Skipping N bare-name image" log),
+other-owner image → skip ("Skipping N image(s) owned by another user"
+log). Plus `--repo` filter, `--dry-run` plan-only output, `-y` skip
+prompt, missing `--workspace` + empty `.env` → exit 2, `--workspace`
+flag wins over `.env` `WS_PATH`, `--owner` flag wins over `.env`
+`DOCKER_HUB_USER`, and `--help` mentions all four new flags.
 
 Regression guard for **issue #282** — the four user-facing wrappers
 (`build.sh` / `run.sh` / `exec.sh` / `stop.sh`) must resolve `_lib.sh`
@@ -581,7 +693,7 @@ conditional GPU deploy block + GUI env/volumes + extra volumes from
 | `environment env_N supports multiple cross-references in one value (refs #236)` | multi-ref |
 | `environment env_N transitive cross-reference resolves through chain (refs #236)` | transitive |
 
-### test/unit/compose_logging_spec.bats (29)
+### test/unit/compose_logging_spec.bats (32)
 
 Covers `[logging]` + `[logging.<svc>]` support in
 `generate_compose_yaml` (#310). Tests the global emission on every
@@ -617,6 +729,9 @@ behaviour, and the two new setup.sh helpers `_parse_logging_svc_sections`
 | `_sync_logging_local_paths_gitignore is idempotent (#328)` | Re-run no-op |
 | `_sync_logging_local_paths_gitignore collects from both global + per-svc (#328)` | Multi-source |
 | `_sync_logging_local_paths_gitignore is no-op when no local_path keys (#328)` | Empty no-op |
+| `_sync_logging_local_paths_gitignore prunes stale managed entries on value change (#390)` | Rename prune |
+| `_sync_logging_local_paths_gitignore drops marker + entries when candidates become empty (#390)` | Feature-off cleanup |
+| `_sync_logging_local_paths_gitignore preserves user entries outside managed block (#390)` | User-owned untouched |
 | `setup.conf [logging] comment block references in-image helper path (/usr/local/lib/base/, #368)` | Documented adoption path matches in-image COPY |
 | `generate_compose_yaml emits per-stage LOG_FILE_PATH on extends:devel stage when [logging] local_path is set (#367)` | Per-svc LOG_FILE_PATH on auto-emitted extends-only stage |
 | `generate_compose_yaml emits per-stage volume mount on extends:devel stage when [logging] local_path is set (#367)` | Per-svc volume mount on auto-emitted extends-only stage |
