@@ -82,7 +82,7 @@ make exec
 CLI 経由で `setup.conf [build] arg_4` を更新します：
 
 ```bash
-make setup -- set build.arg_4 ROS2_DISTRO=jazzy
+./script/setup.sh set build.arg_4 ROS2_DISTRO=jazzy
 make build && make run
 ```
 
@@ -223,7 +223,7 @@ Server スクリプトは各ステップを明示的にログ出力します
 `MESSAGE` 環境変数で上書き可能です：
 
 ```bash
-make exec -- env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
+./script/exec.sh env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
 ```
 
 Server terminal で `Ctrl+C` を押すと `parameter_bridge` と `roscore`
