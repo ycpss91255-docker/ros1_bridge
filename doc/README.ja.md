@@ -28,7 +28,7 @@ ROS 1/2 ブリッジコンテナ、**Humble + Jazzy のデュアルターゲッ�
 
 ```bash
 ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml   # ブリッジ設定を選択（gitignored、clone 単位）。スキップしても demo にフォールバック。
-./build.sh && ./run.sh                       # デフォルト ROS2_DISTRO=humble（setup.conf [build] arg_4 で設定）
+make build && make run                       # デフォルト ROS2_DISTRO=humble（setup.conf [build] arg_4 で設定）
 ```
 
 `ln -sf` ステップをスキップしても問題ありません — Dockerfile が
@@ -67,13 +67,13 @@ Fast-DDS のメジャーバージョン差 + REP-2011 type-hash 不一致によ�
 ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 # 1. ビルド
-./build.sh
+make build
 
 # 2. 実行（ROS master が起動済みであること）
-./run.sh
+make run
 
 # 3. 起動中のコンテナに接続
-./exec.sh
+make exec
 ```
 
 ## ROS 2 distro の切り替え
@@ -82,17 +82,17 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 CLI 経由で `setup.conf [build] arg_4` を更新します：
 
 ```bash
-./setup.sh set build.arg_4 ROS2_DISTRO=jazzy
-./build.sh && ./run.sh
+make setup -- set build.arg_4 ROS2_DISTRO=jazzy
+make build && make run
 ```
 
 `set` は値を `setup.conf [build] arg_4` に書き込みます（section / key が
-無ければ作成）。`./build.sh` は `.env` 内の `setup.conf` hash で変更を
+無ければ作成）。`make build` は `.env` 内の `setup.conf` hash で変更を
 検知し、`.env` + `compose.yaml` を自動再生成して rebuild します。image
 tag（`yunchien/ros1_bridge:devel` 等）は distro を跨いで変わらず、
 切り替えはその場で rebuild されます。
 
-対話的に編集する場合は `./setup_tui.sh`（dialog / whiptail フロントエンド）
+対話的に編集する場合は `make setup-tui`（dialog / whiptail フロントエンド）
 を実行し、TUI で `[build] arg_4` を変更します。
 
 CI は `.github/workflows/main.yaml` の matrix で両 distro を並列 build します。
@@ -104,9 +104,9 @@ setup.conf の変更はローカル build のみに影響し、`ghcr.io/ycpss912
 ### ビルド
 
 ```bash
-./build.sh                       # devel をビルド（デフォルト）
-./build.sh -t test               # smoke test 付きビルド
-./build.sh -t runtime            # 軽量な runtime image をビルド
+make build                       # devel をビルド（デフォルト）
+make build test                  # smoke test 付きビルド
+make build -- -t runtime         # 軽量な runtime image をビルド
 ```
 
 ### 実行
@@ -114,14 +114,14 @@ setup.conf の変更はローカル build のみに影響し、`ghcr.io/ycpss912
 stage target に応じて 2 モード：
 
 ```bash
-./run.sh                         # devel：対話 bash シェル、bridge は自動起動しない
-./run.sh -d                      # devel をバックグラウンド起動、./exec.sh で接続
+make run                         # devel：対話 bash シェル、bridge は自動起動しない
+make run -- -d                   # devel をバックグラウンド起動、make exec で接続
 ```
 
 `runtime`（Dockerfile `CMD` 経由で bridge 自動起動）：
 
 ```bash
-./run.sh -t runtime              # runtime service を起動。entrypoint が両 ROS を
+make run -- -t runtime           # runtime service を起動。entrypoint が両 ROS を
                                  # source、rosparam load /bridge.yaml、その後
                                  # `ros2 run ros1_bridge parameter_bridge` を exec
                                  # します。前提：host network 上に roscore が
@@ -131,8 +131,8 @@ stage target に応じて 2 モード：
 ### 起動中のコンテナに接続
 
 ```bash
-./exec.sh
-./exec.sh bash
+make exec
+make exec bash
 ```
 
 ## ブリッジ設定
@@ -202,19 +202,19 @@ terminal は subscribe するだけです。
 
 | Demo | Terminal 1 (server) | Terminal 2 (client) |
 |------|---------------------|---------------------|
-| A — ROS 1 → ROS 2 | `./exec.sh /root/demo/ros1_server.sh` | `./exec.sh /root/demo/ros2_client.sh` |
-| B — ROS 2 → ROS 1 | `./exec.sh /root/demo/ros2_server.sh` | `./exec.sh /root/demo/ros1_client.sh` |
+| A — ROS 1 → ROS 2 | `make exec -- /root/demo/ros1_server.sh` | `make exec -- /root/demo/ros2_client.sh` |
+| B — ROS 2 → ROS 1 | `make exec -- /root/demo/ros2_server.sh` | `make exec -- /root/demo/ros1_client.sh` |
 
-実際の手順（コンテナを `./run.sh -d` で起動済みとして）：
+実際の手順（コンテナを `make run -- -d` で起動済みとして）：
 
 ```bash
 # Terminal 1 (server) — どちらかを選択
-./exec.sh /root/demo/ros1_server.sh    # Demo A
-./exec.sh /root/demo/ros2_server.sh    # Demo B
+make exec -- /root/demo/ros1_server.sh    # Demo A
+make exec -- /root/demo/ros2_server.sh    # Demo B
 
 # Terminal 2 (client) — 対応するもう一方
-./exec.sh /root/demo/ros2_client.sh    # Demo A
-./exec.sh /root/demo/ros1_client.sh    # Demo B
+make exec -- /root/demo/ros2_client.sh    # Demo A
+make exec -- /root/demo/ros1_client.sh    # Demo B
 ```
 
 Server スクリプトは各ステップを明示的にログ出力します
@@ -223,7 +223,7 @@ Server スクリプトは各ステップを明示的にログ出力します
 `MESSAGE` 環境変数で上書き可能です：
 
 ```bash
-./exec.sh env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
+make exec -- env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
 ```
 
 Server terminal で `Ctrl+C` を押すと `parameter_bridge` と `roscore`
@@ -263,13 +263,16 @@ ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定義
 ├── Dockerfile                   # マルチステージビルド（devel + runtime + test）；source-builds Noetic + ros1_bridge
 ├── setup.conf                   # Repo override；[build] arg_4=ROS2_DISTRO で humble|jazzy を選択
-├── build.sh -> .base/script/docker/build.sh    # Symlink
-├── run.sh -> .base/script/docker/run.sh        # Symlink
-├── exec.sh -> .base/script/docker/exec.sh      # Symlink
-├── stop.sh -> .base/script/docker/stop.sh      # Symlink
-├── Makefile -> .base/script/docker/Makefile    # Symlink
+├── Makefile -> .base/script/docker/Makefile     # Symlink
 ├── .base/                    # 共有スクリプト、テスト、CI（git subtree；バージョンは .base/.version）
 ├── script/
+│   ├── build.sh -> ../.base/script/docker/build.sh    # Wrapper symlinks
+│   ├── run.sh -> ../.base/script/docker/run.sh
+│   ├── exec.sh -> ../.base/script/docker/exec.sh
+│   ├── stop.sh -> ../.base/script/docker/stop.sh
+│   ├── setup.sh -> ../.base/script/docker/setup.sh
+│   ├── setup_tui.sh -> ../.base/script/docker/setup_tui.sh
+│   ├── prune.sh -> ../.base/script/docker/prune.sh
 │   ├── entrypoint.sh            # ROS 1 + ROS 2 を source、bridge 設定を読み込み
 │   ├── ros_entrypoint.sh        # ROS 環境のみ source（osrf 互換）
 │   ├── ros1_server.sh           # Demo A publisher（roscore + bridge を自起動）

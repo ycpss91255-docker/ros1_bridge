@@ -28,7 +28,7 @@ ROS 1/2 bridge container with dual Humble + Jazzy targets — `ros:${ROS2_DISTRO
 
 ```bash
 ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml   # pick a bridge config (gitignored, per-clone). Skip to use the demo fallback.
-./build.sh && ./run.sh                       # default ROS2_DISTRO=humble (set via setup.conf [build] arg_4)
+make build && make run                       # default ROS2_DISTRO=humble (set via setup.conf [build] arg_4)
 ```
 
 Skipping the `ln -sf` step is fine — the Dockerfile falls back to
@@ -65,13 +65,13 @@ for the full migration rationale.
 ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 # 1. Build
-./build.sh
+make build
 
 # 2. Run (requires ROS master running)
-./run.sh
+make run
 
 # 3. Enter running container
-./exec.sh
+make exec
 ```
 
 ## Switch ROS 2 distro
@@ -80,17 +80,17 @@ Default is `humble` (jammy 22.04). To switch to `jazzy` (noble 24.04), update
 `setup.conf [build] arg_4` via the CLI:
 
 ```bash
-./setup.sh set build.arg_4 ROS2_DISTRO=jazzy
-./build.sh && ./run.sh
+make setup -- set build.arg_4 ROS2_DISTRO=jazzy
+make build && make run
 ```
 
 `set` writes the value into `setup.conf [build] arg_4` (creating the
-section / key if absent). `./build.sh` then detects the drift via the
+section / key if absent). `make build` then detects the drift via the
 `setup.conf` hash baked into `.env`, regenerates `.env` + `compose.yaml`,
 and rebuilds. The image tag (`yunchien/ros1_bridge:devel` etc.) is
 unchanged across distros — switching rebuilds in place.
 
-For an interactive picker, run `./setup_tui.sh` (dialog / whiptail
+For an interactive picker, run `make setup-tui` (dialog / whiptail
 frontend) and change `[build] arg_4` there.
 
 CI builds both distros in parallel via the matrix in `.github/workflows/main.yaml`,
@@ -103,9 +103,9 @@ regardless of what `setup.conf` says.
 ### Build
 
 ```bash
-./build.sh                       # Build devel (default)
-./build.sh -t test               # Build with smoke tests
-./build.sh -t runtime            # Build the lean runtime image
+make build                       # Build devel (default)
+make build test                  # Build with smoke tests
+make build -- -t runtime         # Build the lean runtime image
 ```
 
 ### Run
@@ -113,14 +113,14 @@ regardless of what `setup.conf` says.
 Two modes, picked by stage target:
 
 ```bash
-./run.sh                         # devel: interactive bash shell, bridge NOT running
-./run.sh -d                      # devel detached, join via ./exec.sh
+make run                         # devel: interactive bash shell, bridge NOT running
+make run -- -d                   # devel detached, join via make exec
 ```
 
 For `runtime` (auto-starts the bridge via the Dockerfile `CMD`):
 
 ```bash
-./run.sh -t runtime              # Start runtime service. Entrypoint sources both
+make run -- -t runtime           # Start runtime service. Entrypoint sources both
                                  # ROS distros, rosparam loads /bridge.yaml, then
                                  # exec's `ros2 run ros1_bridge parameter_bridge`.
                                  # Requires roscore already running on the host network.
@@ -129,8 +129,8 @@ For `runtime` (auto-starts the bridge via the Dockerfile `CMD`):
 ### Enter running container
 
 ```bash
-./exec.sh
-./exec.sh bash
+make exec
+make exec bash
 ```
 
 ## Bridge Configuration
@@ -198,19 +198,19 @@ use the same pattern: a **server** terminal that owns `roscore` +
 
 | Demo | Terminal 1 (server) | Terminal 2 (client) |
 |------|---------------------|---------------------|
-| A — ROS 1 → ROS 2 | `./exec.sh /root/demo/ros1_server.sh` | `./exec.sh /root/demo/ros2_client.sh` |
-| B — ROS 2 → ROS 1 | `./exec.sh /root/demo/ros2_server.sh` | `./exec.sh /root/demo/ros1_client.sh` |
+| A — ROS 1 → ROS 2 | `make exec -- /root/demo/ros1_server.sh` | `make exec -- /root/demo/ros2_client.sh` |
+| B — ROS 2 → ROS 1 | `make exec -- /root/demo/ros2_server.sh` | `make exec -- /root/demo/ros1_client.sh` |
 
-Steps (assuming the container is up via `./run.sh -d`):
+Steps (assuming the container is up via `make run -- -d`):
 
 ```bash
 # Terminal 1 (server) — pick one demo
-./exec.sh /root/demo/ros1_server.sh    # Demo A
-./exec.sh /root/demo/ros2_server.sh    # Demo B
+make exec -- /root/demo/ros1_server.sh    # Demo A
+make exec -- /root/demo/ros2_server.sh    # Demo B
 
 # Terminal 2 (client) — matching pair
-./exec.sh /root/demo/ros2_client.sh    # Demo A
-./exec.sh /root/demo/ros1_client.sh    # Demo B
+make exec -- /root/demo/ros2_client.sh    # Demo A
+make exec -- /root/demo/ros1_client.sh    # Demo B
 ```
 
 Server scripts log every step (`[ros1_server] step N/5: ...`) so it's
@@ -218,7 +218,7 @@ clear when `roscore` and `parameter_bridge` are up. Override the
 published string with `MESSAGE`:
 
 ```bash
-./exec.sh env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
+make exec -- env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
 ```
 
 `Ctrl+C` on the server terminal tears down `parameter_bridge` and
@@ -258,13 +258,16 @@ ros1_bridge/
 ├── compose.yaml                 # Docker Compose definition
 ├── Dockerfile                   # Multi-stage build (devel + runtime + test); source-builds Noetic + ros1_bridge
 ├── setup.conf                   # Repo override; [build] arg_4=ROS2_DISTRO selects humble|jazzy
-├── build.sh -> .base/script/docker/build.sh    # Symlink
-├── run.sh -> .base/script/docker/run.sh        # Symlink
-├── exec.sh -> .base/script/docker/exec.sh      # Symlink
-├── stop.sh -> .base/script/docker/stop.sh      # Symlink
-├── Makefile -> .base/script/docker/Makefile    # Symlink
+├── Makefile -> .base/script/docker/Makefile     # Symlink (canonical entry: make build/run/exec/stop)
 ├── .base/                    # Shared scripts, tests, CI (git subtree; version pinned in .base/.version)
 ├── script/
+│   ├── build.sh -> ../.base/script/docker/build.sh    # Wrapper symlinks
+│   ├── run.sh -> ../.base/script/docker/run.sh
+│   ├── exec.sh -> ../.base/script/docker/exec.sh
+│   ├── stop.sh -> ../.base/script/docker/stop.sh
+│   ├── setup.sh -> ../.base/script/docker/setup.sh
+│   ├── setup_tui.sh -> ../.base/script/docker/setup_tui.sh
+│   ├── prune.sh -> ../.base/script/docker/prune.sh
 │   ├── entrypoint.sh            # Sources ROS 1 + ROS 2, loads bridge config
 │   ├── ros_entrypoint.sh        # ROS env only (osrf-compatible)
 │   ├── ros1_server.sh           # Demo A publisher (bootstraps roscore + bridge)
