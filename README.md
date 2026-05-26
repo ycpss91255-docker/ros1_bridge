@@ -80,7 +80,7 @@ Default is `humble` (jammy 22.04). To switch to `jazzy` (noble 24.04), update
 `setup.conf [build] arg_4` via the CLI:
 
 ```bash
-make setup -- set build.arg_4 ROS2_DISTRO=jazzy
+./script/setup.sh set build.arg_4 ROS2_DISTRO=jazzy
 make build && make run
 ```
 
@@ -218,7 +218,7 @@ clear when `roscore` and `parameter_bridge` are up. Override the
 published string with `MESSAGE`:
 
 ```bash
-make exec -- env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
+./script/exec.sh env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
 ```
 
 `Ctrl+C` on the server terminal tears down `parameter_bridge` and

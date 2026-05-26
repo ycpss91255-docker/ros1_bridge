@@ -79,7 +79,7 @@ make exec
 更新 `setup.conf [build] arg_4`：
 
 ```bash
-make setup -- set build.arg_4 ROS2_DISTRO=jazzy
+./script/setup.sh set build.arg_4 ROS2_DISTRO=jazzy
 make build && make run
 ```
 
@@ -212,7 +212,7 @@ Server 脚本每一步都打印进度（`[ros1_server] step N/5: ...`），所�
 `MESSAGE` 环境变量：
 
 ```bash
-make exec -- env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
+./script/exec.sh env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
 ```
 
 Server terminal 按 `Ctrl+C` 会收掉 `parameter_bridge` 跟 `roscore`，
