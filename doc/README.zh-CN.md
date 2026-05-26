@@ -28,7 +28,7 @@ ROS 1/2 bridge 容器，**Humble + Jazzy 双 target** — `ros:${ROS2_DISTRO}-ro
 
 ```bash
 ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml   # 挑一份 bridge 配置（gitignored、每个 clone 各自选）。略过则走 demo fallback。
-./build.sh && ./run.sh                       # 默认 ROS2_DISTRO=humble（在 setup.conf [build] arg_4 设置）
+make build && make run                       # 默认 ROS2_DISTRO=humble（在 setup.conf [build] arg_4 设置）
 ```
 
 略过 `ln -sf` 也没问题 — Dockerfile 会自动 fallback 到
@@ -64,13 +64,13 @@ multi-arch（amd64 + arm64 含 Jetson）。完整 migration rationale 见
 ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 
 # 1. 构建
-./build.sh
+make build
 
 # 2. 执行（需要 ROS master 已启动）
-./run.sh
+make run
 
 # 3. 进入已启动的容器
-./exec.sh
+make exec
 ```
 
 ## 切换 ROS 2 distro
@@ -79,16 +79,16 @@ ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml
 更新 `setup.conf [build] arg_4`：
 
 ```bash
-./setup.sh set build.arg_4 ROS2_DISTRO=jazzy
-./build.sh && ./run.sh
+make setup -- set build.arg_4 ROS2_DISTRO=jazzy
+make build && make run
 ```
 
 `set` 把值写进 `setup.conf [build] arg_4`（section / key 不存在会创建）。
-`./build.sh` 接着通过 `.env` 里的 `setup.conf` hash 检测到变动，自动
+`make build` 接着通过 `.env` 里的 `setup.conf` hash 检测到变动，自动
 重生 `.env` + `compose.yaml` 并 rebuild。image tag（`yunchien/ros1_bridge:devel`
 等）跨 distro 不变，切换 = 原地 rebuild。
 
-要交互式编辑，跑 `./setup_tui.sh`（dialog / whiptail 前端），在 TUI 里
+要交互式编辑，跑 `make setup-tui`（dialog / whiptail 前端），在 TUI 里
 改 `[build] arg_4`。
 
 CI 通过 `.github/workflows/main.yaml` 的 matrix 同时 build 两个 distro，所以
@@ -100,9 +100,9 @@ setup.conf 改动只影响本地 build；发布到 `ghcr.io/ycpss91255-docker/ro
 ### 构建
 
 ```bash
-./build.sh                       # 构建 devel（默认）
-./build.sh -t test               # 构建含 smoke test
-./build.sh -t runtime            # 构建精简的 runtime image
+make build                       # 构建 devel（默认）
+make build test                  # 构建含 smoke test
+make build -- -t runtime         # 构建精简的 runtime image
 ```
 
 ### 执行
@@ -110,14 +110,14 @@ setup.conf 改动只影响本地 build；发布到 `ghcr.io/ycpss91255-docker/ro
 按 stage target 分两种模式：
 
 ```bash
-./run.sh                         # devel：交互 bash shell，不会自动运行 bridge
-./run.sh -d                      # devel 后台运行，之后用 ./exec.sh 进入
+make run                         # devel：交互 bash shell，不会自动运行 bridge
+make run -- -d                   # devel 后台运行，之后用 make exec 进入
 ```
 
 `runtime`（通过 Dockerfile `CMD` 自动启动 bridge）：
 
 ```bash
-./run.sh -t runtime              # 启动 runtime service。entrypoint 会 source 两个
+make run -- -t runtime           # 启动 runtime service。entrypoint 会 source 两个
                                  # ROS、rosparam load /bridge.yaml，然后 exec
                                  # `ros2 run ros1_bridge parameter_bridge`。
                                  # 前提：host network 上已启动 roscore。
@@ -126,8 +126,8 @@ setup.conf 改动只影响本地 build；发布到 `ghcr.io/ycpss91255-docker/ro
 ### 进入已启动的容器
 
 ```bash
-./exec.sh
-./exec.sh bash
+make exec
+make exec bash
 ```
 
 ## Bridge 设置
@@ -192,19 +192,19 @@ services_2_to_1:
 
 | Demo | Terminal 1 (server) | Terminal 2 (client) |
 |------|---------------------|---------------------|
-| A — ROS 1 → ROS 2 | `./exec.sh /root/demo/ros1_server.sh` | `./exec.sh /root/demo/ros2_client.sh` |
-| B — ROS 2 → ROS 1 | `./exec.sh /root/demo/ros2_server.sh` | `./exec.sh /root/demo/ros1_client.sh` |
+| A — ROS 1 → ROS 2 | `make exec -- /root/demo/ros1_server.sh` | `make exec -- /root/demo/ros2_client.sh` |
+| B — ROS 2 → ROS 1 | `make exec -- /root/demo/ros2_server.sh` | `make exec -- /root/demo/ros1_client.sh` |
 
-实际操作（假设容器已用 `./run.sh -d` 起好）：
+实际操作（假设容器已用 `make run -- -d` 起好）：
 
 ```bash
 # Terminal 1 (server) — 二选一
-./exec.sh /root/demo/ros1_server.sh    # Demo A
-./exec.sh /root/demo/ros2_server.sh    # Demo B
+make exec -- /root/demo/ros1_server.sh    # Demo A
+make exec -- /root/demo/ros2_server.sh    # Demo B
 
 # Terminal 2 (client) — 对应的另一半
-./exec.sh /root/demo/ros2_client.sh    # Demo A
-./exec.sh /root/demo/ros1_client.sh    # Demo B
+make exec -- /root/demo/ros2_client.sh    # Demo A
+make exec -- /root/demo/ros1_client.sh    # Demo B
 ```
 
 Server 脚本每一步都打印进度（`[ros1_server] step N/5: ...`），所以
@@ -212,7 +212,7 @@ Server 脚本每一步都打印进度（`[ros1_server] step N/5: ...`），所�
 `MESSAGE` 环境变量：
 
 ```bash
-./exec.sh env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
+make exec -- env MESSAGE="hi from ROS 1" /root/demo/ros1_server.sh
 ```
 
 Server terminal 按 `Ctrl+C` 会收掉 `parameter_bridge` 跟 `roscore`，
@@ -252,13 +252,16 @@ ros1_bridge/
 ├── compose.yaml                 # Docker Compose 定义
 ├── Dockerfile                   # 多阶段构建（devel + runtime + test）；source-builds Noetic + ros1_bridge
 ├── setup.conf                   # Repo override；[build] arg_4=ROS2_DISTRO 选 humble|jazzy
-├── build.sh -> .base/script/docker/build.sh    # Symlink
-├── run.sh -> .base/script/docker/run.sh        # Symlink
-├── exec.sh -> .base/script/docker/exec.sh      # Symlink
-├── stop.sh -> .base/script/docker/stop.sh      # Symlink
-├── Makefile -> .base/script/docker/Makefile    # Symlink
+├── Makefile -> .base/script/docker/Makefile     # Symlink
 ├── .base/                    # 共用脚本、测试、CI（git subtree；版本记录在 .base/.version）
 ├── script/
+│   ├── build.sh -> ../.base/script/docker/build.sh    # Wrapper symlinks
+│   ├── run.sh -> ../.base/script/docker/run.sh
+│   ├── exec.sh -> ../.base/script/docker/exec.sh
+│   ├── stop.sh -> ../.base/script/docker/stop.sh
+│   ├── setup.sh -> ../.base/script/docker/setup.sh
+│   ├── setup_tui.sh -> ../.base/script/docker/setup_tui.sh
+│   ├── prune.sh -> ../.base/script/docker/prune.sh
 │   ├── entrypoint.sh            # Source ROS 1 + ROS 2，载入 bridge 设置
 │   ├── ros_entrypoint.sh        # 仅 source ROS 环境（兼容 osrf）
 │   ├── ros1_server.sh           # Demo A publisher（自起 roscore + bridge）
