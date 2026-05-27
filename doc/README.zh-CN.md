@@ -116,11 +116,14 @@ make run -- -d                   # devel 后台运行，之后用 make exec 进�
 
 `runtime`（通过 Dockerfile `CMD` 自动启动 bridge）：
 
+> **前置条件：** 启动 runtime 容器前，host network 上必须已有 `roscore`
+> 在运行。否则 `parameter_bridge` 只会打印一次 `Connection refused` 后
+> 进入静默 idle，不再有任何输出。
+
 ```bash
 make run -- -t runtime           # 启动 runtime service。entrypoint 会 source 两个
                                  # ROS、rosparam load /bridge.yaml，然后 exec
                                  # `ros2 run ros1_bridge parameter_bridge`。
-                                 # 前提：host network 上已启动 roscore。
 ```
 
 ### 进入已启动的容器
