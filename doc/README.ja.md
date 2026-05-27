@@ -296,10 +296,15 @@ ros1_bridge/
 │   ├── prune.sh -> ../.base/script/docker/prune.sh
 │   ├── entrypoint.sh            # ROS 1 + ROS 2 を source、bridge 設定を読み込み
 │   ├── ros_entrypoint.sh        # ROS 環境のみ source（osrf 互換）
-│   ├── ros1_server.sh           # Demo A publisher（roscore + bridge を自起動）
-│   ├── ros1_client.sh           # Demo B subscriber
-│   ├── ros2_server.sh           # Demo B publisher（roscore + bridge を自起動）
-│   └── ros2_client.sh           # Demo A subscriber
+│   ├── demo/
+│   │   ├── ros1_server.sh       # Demo A publisher（roscore + bridge を自起動）
+│   │   ├── ros1_client.sh       # Demo B subscriber
+│   │   ├── ros2_server.sh       # Demo B publisher（roscore + bridge を自起動）
+│   │   ├── ros2_client.sh       # Demo A subscriber
+│   │   ├── demo_pub_ros1.py     # ROS 1 publisher（long-lived、--rate flag）
+│   │   └── demo_pub_ros2.py     # ROS 2 publisher（long-lived、--rate flag）
+│   └── docker/
+│       └── colcon_build_bridge.sh  # Build helper（MAKEFLAGS -j 自動検出）
 ├── bridge.yaml                  # config/ros1_bridge/*.yaml への symlink（gitignored、利用者が選択）
 ├── config/
 │   └── ros1_bridge/             # Bridge 設定ファイル（namespaced；config/ は template overlay 用に温存）

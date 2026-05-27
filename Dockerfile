@@ -132,9 +132,9 @@ COPY --chmod=0755 .base/script/docker/_entrypoint_logging.sh /usr/local/lib/base
 # users `./exec.sh` into the container, land directly inside this folder and
 # `ls` shows the 4 demo scripts immediately. Closes #70.
 COPY --chmod=0755 \
-    script/ros1_server.sh script/ros1_client.sh \
-    script/ros2_server.sh script/ros2_client.sh \
-    script/demo_pub_ros1.py script/demo_pub_ros2.py \
+    script/demo/ros1_server.sh script/demo/ros1_client.sh \
+    script/demo/ros2_server.sh script/demo/ros2_client.sh \
+    script/demo/demo_pub_ros1.py script/demo/demo_pub_ros2.py \
     /root/demo/
 # bridge.yaml is gitignored (per-clone operator pick from config/ros1_bridge/,
 # see README "Bridge Configuration"). When the symlink is missing or broken
@@ -234,9 +234,9 @@ COPY --chmod=0755 script/entrypoint.sh script/ros_entrypoint.sh /
 # Refs base#368, base PR #372.
 COPY --chmod=0755 .base/script/docker/_entrypoint_logging.sh /usr/local/lib/base/_entrypoint_logging.sh
 COPY --chmod=0755 \
-    script/ros1_server.sh script/ros1_client.sh \
-    script/ros2_server.sh script/ros2_client.sh \
-    script/demo_pub_ros1.py script/demo_pub_ros2.py \
+    script/demo/ros1_server.sh script/demo/ros1_client.sh \
+    script/demo/ros2_server.sh script/demo/ros2_client.sh \
+    script/demo/demo_pub_ros1.py script/demo/demo_pub_ros2.py \
     /root/demo/
 # Same bridge.yaml fallback rule as the devel stage above. Closes #65 / #70.
 RUN --mount=type=bind,source=.,target=/ctx \
