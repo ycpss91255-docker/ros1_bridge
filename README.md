@@ -292,10 +292,15 @@ ros1_bridge/
 │   ├── prune.sh -> ../.base/script/docker/prune.sh
 │   ├── entrypoint.sh            # Sources ROS 1 + ROS 2, loads bridge config
 │   ├── ros_entrypoint.sh        # ROS env only (osrf-compatible)
-│   ├── ros1_server.sh           # Demo A publisher (bootstraps roscore + bridge)
-│   ├── ros1_client.sh           # Demo B subscriber
-│   ├── ros2_server.sh           # Demo B publisher (bootstraps roscore + bridge)
-│   └── ros2_client.sh           # Demo A subscriber
+│   ├── demo/
+│   │   ├── ros1_server.sh       # Demo A publisher (bootstraps roscore + bridge)
+│   │   ├── ros1_client.sh       # Demo B subscriber
+│   │   ├── ros2_server.sh       # Demo B publisher (bootstraps roscore + bridge)
+│   │   ├── ros2_client.sh       # Demo A subscriber
+│   │   ├── demo_pub_ros1.py     # ROS 1 publisher (long-lived, --rate flag)
+│   │   └── demo_pub_ros2.py     # ROS 2 publisher (long-lived, --rate flag)
+│   └── docker/
+│       └── colcon_build_bridge.sh  # Build helper (auto-detect MAKEFLAGS -j)
 ├── bridge.yaml                  # Symlink to one of config/ros1_bridge/*.yaml (gitignored, operator picks)
 ├── config/
 │   └── ros1_bridge/             # Bridge configs (namespaced; frees config/ for template overlays)

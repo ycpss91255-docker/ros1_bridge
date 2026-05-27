@@ -5,6 +5,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Demo scripts relocated from `script/` to `script/demo/`** (#130).
+  Separates the 6 demo files (4 shell + 2 Python) from infrastructure
+  wrapper symlinks. Container-internal paths (`/root/demo/`) unchanged.
+  Also fixed git executable bit on `demo_pub_ros1.py`,
+  `demo_pub_ros2.py`, and `script/docker/colcon_build_bridge.sh`
+  (were 100644, now 100755).
+
 ### Fixed
 
 - **Runtime image crash: missing `libboost_regex` + ldd smoke gate

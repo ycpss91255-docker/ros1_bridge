@@ -285,10 +285,15 @@ ros1_bridge/
 │   ├── prune.sh -> ../.base/script/docker/prune.sh
 │   ├── entrypoint.sh            # Source ROS 1 + ROS 2，载入 bridge 设置
 │   ├── ros_entrypoint.sh        # 仅 source ROS 环境（兼容 osrf）
-│   ├── ros1_server.sh           # Demo A publisher（自起 roscore + bridge）
-│   ├── ros1_client.sh           # Demo B subscriber
-│   ├── ros2_server.sh           # Demo B publisher（自起 roscore + bridge）
-│   └── ros2_client.sh           # Demo A subscriber
+│   ├── demo/
+│   │   ├── ros1_server.sh       # Demo A publisher（自起 roscore + bridge）
+│   │   ├── ros1_client.sh       # Demo B subscriber
+│   │   ├── ros2_server.sh       # Demo B publisher（自起 roscore + bridge）
+│   │   ├── ros2_client.sh       # Demo A subscriber
+│   │   ├── demo_pub_ros1.py     # ROS 1 publisher（long-lived，--rate flag）
+│   │   └── demo_pub_ros2.py     # ROS 2 publisher（long-lived，--rate flag）
+│   └── docker/
+│       └── colcon_build_bridge.sh  # Build helper（自动检测 MAKEFLAGS -j）
 ├── bridge.yaml                  # Symlink 到 config/ros1_bridge/*.yaml 之一（gitignored，操作者自选）
 ├── config/
 │   └── ros1_bridge/             # Bridge 配置文件（namespaced；保留 config/ 给 template overlay 用）
