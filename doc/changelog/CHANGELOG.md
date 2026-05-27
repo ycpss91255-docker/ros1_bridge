@@ -7,6 +7,14 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Runtime image crash: missing `libboost_regex` + ldd smoke gate
+  (#123).** `parameter_bridge` in the runtime stage failed with
+  `cannot open shared object: libboost_regex.so.1.74.0`. Added
+  `libboost-regex1.74.0` (humble) / `1.83.0` (jazzy) to the runtime
+  apt install block. Overrode `RUNTIME_SMOKE_CMD` to ldd-check the
+  binary at build time so future missing-lib regressions are caught
+  in CI, not at user runtime. Refs base#430.
+
 - **`.hadolint.yaml` broken symlink → repo-specific file with
   DL3003 + DL3006 ignores.** The base symlink only carried 4
   generic ignores; ros1_bridge's `FROM ${BASE_IMAGE}` (DL3006,
