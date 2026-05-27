@@ -201,6 +201,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                 libboost-chrono1.83.0t64 \
                 libboost-filesystem1.83.0 \
                 libboost-program-options1.83.0 \
+                libboost-regex1.83.0 \
                 libboost-thread1.83.0 \
                 libpocofoundation80t64 \
                 libgpgme11t64 \
@@ -209,6 +210,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                 libboost-chrono1.74.0 \
                 libboost-filesystem1.74.0 \
                 libboost-program-options1.74.0 \
+                libboost-regex1.74.0 \
                 libboost-thread1.74.0 \
                 libpocofoundation80 \
                 libgpgme11 \
@@ -305,5 +307,11 @@ RUN bats /smoke_test/
 # single string for sh to parse normally.
 FROM runtime AS runtime-test
 
-ARG RUNTIME_SMOKE_CMD='whoami && bash --version'
-RUN sh -c "${RUNTIME_SMOKE_CMD}"
+ARG RUNTIME_SMOKE_CMD='whoami && bash --version && \
+  source /opt/ros/${ROS1_DISTRO}/setup.bash -- && \
+  source /opt/ros/${ROS2_DISTRO}/setup.bash -- && \
+  source /bridge_ws/install/setup.bash -- && \
+  echo "--- ldd: parameter_bridge ---" && \
+  ldd /bridge_ws/install/ros1_bridge/lib/ros1_bridge/parameter_bridge && \
+  ! ldd /bridge_ws/install/ros1_bridge/lib/ros1_bridge/parameter_bridge 2>&1 | grep -q "not found"'
+RUN bash -c "${RUNTIME_SMOKE_CMD}"
