@@ -26,15 +26,32 @@ ROS 1/2 ブリッジコンテナ、**Humble + Jazzy のデュアルターゲッ�
 
 ## TL;DR
 
+### Demo（ROS 1 / ROS 2 ブリッジのエンドツーエンド確認）
+
 ```bash
-ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml   # ブリッジ設定を選択（gitignored、clone 単位）。スキップしても demo にフォールバック。
-make build && make run                       # デフォルト ROS2_DISTRO=humble（setup.conf [build] arg_4 で設定）
+make build && make run -- -d
+
+# Terminal 1 — roscore + bridge + ROS 1 publisher (10 Hz)
+make exec -- /root/demo/ros1_server.sh
+
+# Terminal 2 — ROS 2 subscriber がブリッジされたメッセージを受信
+make exec -- /root/demo/ros2_client.sh
 ```
 
-`ln -sf` ステップをスキップしても問題ありません — Dockerfile が
-自動的に `config/ros1_bridge/demo_bridge.yaml` にフォールバックします
-（[#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65) 修正）。
-利用可能な設定一覧は [ブリッジ設定](#ブリッジ設定) を参照。
+### Production（ヘッドレス bridge デーモン）
+
+```bash
+# 前提条件：host network 上で roscore が実行中であること
+make build && make run -- -t runtime -d
+
+# bridge の状態確認
+docker logs -f $(docker ps -qf name=ros1_bridge-runtime)
+```
+
+> デフォルト ROS2\_DISTRO=humble（`setup.conf [build] arg_4` で設定）。
+> `bridge.yaml` symlink 未作成時は自動的に
+> `config/ros1_bridge/demo_bridge.yaml` にフォールバック —
+> 利用可能な設定一覧は [ブリッジ設定](#ブリッジ設定) を参照。
 
 ## Overview
 

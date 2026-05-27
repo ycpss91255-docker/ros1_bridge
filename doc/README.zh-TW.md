@@ -26,14 +26,32 @@ ROS 1/2 bridge 容器，**Humble + Jazzy 雙 target** — `ros:${ROS2_DISTRO}-ro
 
 ## TL;DR
 
+### Demo（端到端 ROS 1 / ROS 2 bridging）
+
 ```bash
-ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml   # 挑一份 bridge 設定（gitignored、每個 clone 各自選）。略過則走 demo fallback。
-make build && make run                       # 預設 ROS2_DISTRO=humble（在 setup.conf [build] arg_4 設定）
+make build && make run -- -d
+
+# Terminal 1 — roscore + bridge + ROS 1 publisher (10 Hz)
+make exec -- /root/demo/ros1_server.sh
+
+# Terminal 2 — ROS 2 subscriber 接收 bridged 訊息
+make exec -- /root/demo/ros2_client.sh
 ```
 
-略過 `ln -sf` 也沒關係 — Dockerfile 會自動 fallback 到
-`config/ros1_bridge/demo_bridge.yaml`（修 [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)）。
-完整可選設定見 [Bridge 設定](#bridge-設定)。
+### Production（headless bridge daemon）
+
+```bash
+# 前置條件：host network 上必須已有 roscore 在執行
+make build && make run -- -t runtime -d
+
+# 檢查 bridge 狀態
+docker logs -f $(docker ps -qf name=ros1_bridge-runtime)
+```
+
+> 預設 ROS2\_DISTRO=humble（在 `setup.conf [build] arg_4` 設定）。
+> 未建立 `bridge.yaml` symlink 時自動 fallback 到
+> `config/ros1_bridge/demo_bridge.yaml` — 完整可選設定見
+> [Bridge 設定](#bridge-設定)。
 
 ## Overview
 
