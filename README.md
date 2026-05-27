@@ -26,14 +26,32 @@ ROS 1/2 bridge container with dual Humble + Jazzy targets — `ros:${ROS2_DISTRO
 
 ## TL;DR
 
+### Demo (see ROS 1 / ROS 2 bridging end-to-end)
+
 ```bash
-ln -sf config/ros1_bridge/demo_bridge.yaml bridge.yaml   # pick a bridge config (gitignored, per-clone). Skip to use the demo fallback.
-make build && make run                       # default ROS2_DISTRO=humble (set via setup.conf [build] arg_4)
+make build && make run -- -d
+
+# Terminal 1 — roscore + bridge + ROS 1 publisher (10 Hz)
+make exec -- /root/demo/ros1_server.sh
+
+# Terminal 2 — ROS 2 subscriber receives bridged messages
+make exec -- /root/demo/ros2_client.sh
 ```
 
-Skipping the `ln -sf` step is fine — the Dockerfile falls back to
-`config/ros1_bridge/demo_bridge.yaml` automatically (closes [#65](https://github.com/ycpss91255-docker/ros1_bridge/issues/65)).
-See [Bridge Configuration](#bridge-configuration) for the full set of available configs.
+### Production (headless bridge daemon)
+
+```bash
+# Prerequisite: roscore must be running on the host network
+make build && make run -- -t runtime -d
+
+# Check bridge status
+docker logs -f $(docker ps -qf name=ros1_bridge-runtime)
+```
+
+> Default ROS2\_DISTRO=humble (set via `setup.conf [build] arg_4`).
+> Default bridge config falls back to `config/ros1_bridge/demo_bridge.yaml`
+> when no `bridge.yaml` symlink is present — see [Bridge Configuration](#bridge-configuration)
+> for the full set of available configs.
 
 ## Overview
 
