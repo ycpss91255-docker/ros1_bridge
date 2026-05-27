@@ -5,6 +5,15 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`.hadolint.yaml` broken symlink → repo-specific file with
+  DL3003 + DL3006 ignores.** The base symlink only carried 4
+  generic ignores; ros1_bridge's `FROM ${BASE_IMAGE}` (DL3006,
+  variable-based multi-distro) and `cd /lint` in the test stage
+  (DL3003) caused CI failure on main branch push. Standalone file
+  adds the 2 repo-specific rules alongside the 4 base rules.
+
 ### Changed
 - **Completed `[logging] local_path` adoption against base v0.32.0** — Dockerfile devel + runtime stages now COPY `.base/script/docker/_entrypoint_logging.sh` to `/usr/local/lib/base/_entrypoint_logging.sh` per base v0.32.0's in-image pattern ([base#368](https://github.com/ycpss91255-docker/base/issues/368) / [base PR #372](https://github.com/ycpss91255-docker/base/pull/372)). `script/entrypoint.sh` (runtime ENTRYPOINT) source-line simplified to single un-guarded `. /usr/local/lib/base/_entrypoint_logging.sh`; the `${USER:-root}` + `[[ -f ... ]]` guards from #107 are no longer needed. **`script/ros_entrypoint.sh` (devel ENTRYPOINT) gains the same source-line — this was missed in #107**, which is why `logs/devel.log` never populated despite the v0.30.0 adoption. Per-service `LOG_FILE_PATH` emit on `extends:devel` services now works thanks to [base#367](https://github.com/ycpss91255-docker/base/issues/367) / [base PR #374](https://github.com/ycpss91255-docker/base/pull/374) (shipped in v0.32.0 via [#109](https://github.com/ycpss91255-docker/ros1_bridge/pull/109)). Verified e2e: `./script/run.sh -d` populates `logs/devel.log` matching `docker logs ros1_bridge-devel`; `./script/run.sh -d -t runtime` populates `logs/runtime.log` distinct from `devel.log`. `builder` / `test-tools-stage` Docker stages use upstream osrf's `/ros_entrypoint.sh` (no `COPY entrypoint.sh` in those stages) so their host logs do not populate — acceptable, internal build helpers.
 
