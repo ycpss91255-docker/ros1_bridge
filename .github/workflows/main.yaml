@@ -47,7 +47,6 @@ jobs:
         ]
       build_runtime: true
       platforms: linux/amd64,linux/arm64
-      test_tools_version: v0.29.1
 
   # Branch protection requires `ci-summary`. The dispatcher itself emits
   # a `ci-passed` rollup internally; this `ci-summary` job mirrors that

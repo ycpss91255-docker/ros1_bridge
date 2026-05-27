@@ -1,6 +1,6 @@
 # TEST.md
 
-**62 tests** total (37 in `ros_env.bats` + 25 in `script_help.bats`).
+**64 tests** total (37 in `ros_env.bats` + 27 in `script_help.bats`).
 
 ## test/smoke/ros_env.bats
 
@@ -66,9 +66,9 @@
 | `colcon_build_bridge.sh: --print-jobs emits auto-detected -j<N> line` | `/tmp/colcon_build_bridge.sh --print-jobs` re-runs the `min(nproc, mem_gb/2)` heuristic without invoking colcon and prints `[colcon] auto-detected -j<N> (cpu=…, mem=…GB)`. Regression guard for the auto-detect path (closes [#79](https://github.com/ycpss91255-docker/ros1_bridge/issues/79)) |
 | `colcon_build_bridge.sh: BUILD_JOBS env override honored` | `BUILD_JOBS=1` env override bypasses the heuristic and emits `-j1` verbatim |
 
-## template/test/smoke/script_help.bats (25)
+## template/test/smoke/script_help.bats (27)
 
-Inherited from the template; covers the 4 wrapper scripts (`build.sh` / `run.sh` / `exec.sh` / `stop.sh`) at three levels: help-flag plumbing (12), `LANG`/`SETUP_LANG` detection (4), and `--lang` translated usage output (9).
+Inherited from the template; covers the 4 wrapper scripts (`build.sh` / `run.sh` / `exec.sh` / `stop.sh`) at four levels: help-flag plumbing (12), auto-apply default description (#365, 2), `LANG`/`SETUP_LANG` detection (4), and `--lang` translated usage output (9).
 
 ### Wrapper help flags (12)
 
