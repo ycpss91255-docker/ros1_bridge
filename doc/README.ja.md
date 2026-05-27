@@ -250,6 +250,13 @@ Server スクリプトは各ステップを明示的にログ出力します
 Server terminal で `Ctrl+C` を押すと `parameter_bridge` と `roscore`
 を停止し、client terminal も EOF になります。
 
+> **注意：** Demo scripts は常に組み込みの `/demo_bridge.yaml`
+> （`std_msgs/String` chatter）を使用し、オペレーターが選択した
+> `/bridge.yaml` は読み込みません。これは意図的な設計です — demo は
+> 自己完結型ツールであり、本番用 bridge 設定に依存しません。カスタム
+> bridge 設定をテストするには、runtime mode（`make run -- -t runtime`）
+> を使用してください。
+
 ## アーキテクチャ
 
 ```mermaid

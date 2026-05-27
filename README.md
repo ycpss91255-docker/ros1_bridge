@@ -246,6 +246,12 @@ published string with `MESSAGE`:
 `Ctrl+C` on the server terminal tears down `parameter_bridge` and
 `roscore`; the client terminal then EOFs.
 
+> **Note:** Demo scripts always use the built-in `/demo_bridge.yaml`
+> (`std_msgs/String` chatter), not the operator-picked `/bridge.yaml`.
+> This is intentional — demos are self-contained and work regardless of
+> the production bridge config. To test a custom bridge config, use
+> runtime mode (`make run -- -t runtime`) instead.
+
 ## Architecture
 
 ```mermaid

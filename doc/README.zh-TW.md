@@ -239,6 +239,11 @@ Server 腳本每一步都印出進度（`[ros1_server] step N/5: ...`），所�
 Server terminal 按 `Ctrl+C` 會收掉 `parameter_bridge` 跟 `roscore`，
 client terminal 接著就 EOF。
 
+> **注意：** Demo scripts 固定使用內建的 `/demo_bridge.yaml`
+> （`std_msgs/String` chatter），不會讀取操作者選的 `/bridge.yaml`。
+> 這是刻意設計 — demo 為自包含工具，不受 production bridge 設定影響。
+> 要測試自訂 bridge 設定，請改用 runtime mode（`make run -- -t runtime`）。
+
 ## 架構
 
 ```mermaid
