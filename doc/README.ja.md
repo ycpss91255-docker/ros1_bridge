@@ -120,12 +120,16 @@ make run -- -d                   # devel をバックグラウンド起動、mak
 
 `runtime`（Dockerfile `CMD` 経由で bridge 自動起動）：
 
+> **前提条件：** runtime コンテナを起動する前に、host network 上で
+> `roscore` が実行中でなければなりません。起動していない場合、
+> `parameter_bridge` は `Connection refused` を一度出力した後、
+> 以降は何も出力せずサイレントに idle 状態に入ります。
+
 ```bash
 make run -- -t runtime           # runtime service を起動。entrypoint が両 ROS を
                                  # source、rosparam load /bridge.yaml、その後
                                  # `ros2 run ros1_bridge parameter_bridge` を exec
-                                 # します。前提：host network 上に roscore が
-                                 # 起動していること。
+                                 # します。
 ```
 
 ### 起動中のコンテナに接続

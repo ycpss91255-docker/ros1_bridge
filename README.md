@@ -119,11 +119,15 @@ make run -- -d                   # devel detached, join via make exec
 
 For `runtime` (auto-starts the bridge via the Dockerfile `CMD`):
 
+> **Prerequisite:** `roscore` must already be running on the host
+> network before starting the runtime container. Without it,
+> `parameter_bridge` prints `Connection refused` once and then idles
+> silently with no further output.
+
 ```bash
 make run -- -t runtime           # Start runtime service. Entrypoint sources both
                                  # ROS distros, rosparam loads /bridge.yaml, then
                                  # exec's `ros2 run ros1_bridge parameter_bridge`.
-                                 # Requires roscore already running on the host network.
 ```
 
 ### Enter running container
