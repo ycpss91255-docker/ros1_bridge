@@ -22,6 +22,11 @@ the demo works identically regardless of what the operator picked for
 production bridging. To demo with a custom bridge config, use runtime
 mode instead.
 
+**Why bake at build time (not bind mount):** The runtime image is
+designed as a self-contained deployment artifact (`docker pull` +
+`docker run` on edge devices without a source checkout). YAML edits
+cost a rebuild. See [ADR-00000001](doc/adr/00000001-runtime-image-immutable.md).
+
 ## ROS Environment Sourcing Order
 
 Both entrypoints source ROS environments in the same order:
