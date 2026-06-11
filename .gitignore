@@ -22,3 +22,5 @@ setup.conf.local
 
 # managed by template: [logging] local_path (do not remove)
 /log/
+
+.env.generated
