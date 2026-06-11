@@ -22,7 +22,7 @@ setup() {
   load "${BATS_TEST_DIRNAME}/test_helper"
 
   # shellcheck disable=SC1091
-  source /source/script/docker/setup_tui.sh
+  source /source/script/docker/wrapper/setup_tui.sh
 
   # Reset per-test global state. The arrays are declared at module load
   # time (setup_tui.sh declare -gA / declare -ga); zero them out so
@@ -594,6 +594,23 @@ _make_dockerfile_with_stages() {
   local -a _out=()
   _list_dockerfile_stages_available _out "${_base}"
   [[ "${#_out[@]}" -eq 0 ]] || { echo "got ${_out[*]}"; return 1; }
+}
+
+@test "_list_dockerfile_stages_available: includes devel-test as an editable stage (#493)" {
+  # #493 (A1'-b): devel-test is the override surface for the test
+  # service, so the per-stage TUI editor must offer it.
+  local _df="${BATS_TEST_TMPDIR}/Dockerfile"
+  cat > "${_df}" <<'EOF'
+FROM scratch AS sys
+FROM sys AS devel-base
+FROM devel-base AS devel
+FROM devel AS devel-test
+FROM devel AS headless
+EOF
+  local -a _out=()
+  _list_dockerfile_stages_available _out "${BATS_TEST_TMPDIR}"
+  printf '%s\n' "${_out[@]}" | grep -qx "devel-test" \
+    || { echo "devel-test missing from: ${_out[*]}"; return 1; }
 }
 
 @test "_count_stage_overrides: counts unique non-empty keys across OVR + CURRENT" {
