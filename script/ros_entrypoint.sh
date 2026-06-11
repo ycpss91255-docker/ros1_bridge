@@ -7,7 +7,7 @@ set -euo pipefail
 # is the devel stage ENTRYPOINT, so both paths must source the helper
 # for per-stage host log files to populate.
 # shellcheck source=/dev/null
-. /usr/local/lib/base/_entrypoint_logging.sh
+. /usr/local/lib/base/logging.sh
 
 # `set +u` / `set -u` brackets isolate ROS's setup.bash chain (catkin
 # + ament profile.d entries dereference unbound vars like

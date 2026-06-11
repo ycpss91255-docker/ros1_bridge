@@ -8,7 +8,7 @@ set -euo pipefail
 # file-existence check. The helper itself is a no-op when LOG_FILE_PATH
 # is unset.
 # shellcheck source=/dev/null
-. /usr/local/lib/base/_entrypoint_logging.sh
+. /usr/local/lib/base/logging.sh
 
 # Source ROS 1 + ROS 2 + ros1_bridge install overlay. The trailing `--`
 # is required: bash's `source` propagates the calling script's positional

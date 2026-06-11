@@ -127,7 +127,7 @@ ARG BRIDGE_FILE="bridge.yaml"
 COPY --chmod=0755 script/entrypoint.sh script/ros_entrypoint.sh /
 # Base v0.32.0+ ships the [logging] tee helper into a stable in-image path
 # so entrypoint.sh can source it un-guarded; refs base#368, base PR #372.
-COPY --chmod=0755 .base/script/docker/_entrypoint_logging.sh /usr/local/lib/base/_entrypoint_logging.sh
+COPY --chmod=0755 .base/script/docker/runtime/logging.sh /usr/local/lib/base/logging.sh
 # Demo helpers land in /root/demo/ -- combined with WORKDIR /root/demo below,
 # users `./exec.sh` into the container, land directly inside this folder and
 # `ls` shows the 4 demo scripts immediately. Closes #70.
@@ -232,7 +232,7 @@ COPY --chmod=0755 script/entrypoint.sh script/ros_entrypoint.sh /
 # Runtime starts FROM ${IMAGE} (fresh base, not FROM devel), so the
 # [logging] helper COPY from devel does not propagate — re-COPY here.
 # Refs base#368, base PR #372.
-COPY --chmod=0755 .base/script/docker/_entrypoint_logging.sh /usr/local/lib/base/_entrypoint_logging.sh
+COPY --chmod=0755 .base/script/docker/runtime/logging.sh /usr/local/lib/base/logging.sh
 COPY --chmod=0755 \
     script/demo/ros1_server.sh script/demo/ros1_client.sh \
     script/demo/ros2_server.sh script/demo/ros2_client.sh \
@@ -271,8 +271,6 @@ COPY --from=test-tools-stage /usr/local/bin/hadolint /usr/local/bin/hadolint
 # Lint: ShellCheck (.sh) + Hadolint (Dockerfile)
 COPY .hadolint.yaml /lint/.hadolint.yaml
 COPY Dockerfile /lint/Dockerfile
-COPY .base/script/docker/build.sh .base/script/docker/run.sh .base/script/docker/exec.sh .base/script/docker/stop.sh /lint/
-COPY .base/script/docker/_lib.sh .base/script/docker/i18n.sh /lint/
 # base v0.28.0+ split _lib.sh into focused sub-libs under script/docker/lib/.
 # _lib.sh now sources `${_lib_dir}/lib/{log,env,conf,compose,config_summary}.sh`,
 # so the lint stage needs the `lib/` subdir alongside the umbrella loader.
